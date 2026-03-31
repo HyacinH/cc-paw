@@ -63,8 +63,13 @@ export interface UsageStats {
   }
 }
 
+export interface ProjectEntry {
+  dir: string       // absolute path — immutable, used as key everywhere
+  alias?: string    // user-defined display name, optional
+}
+
 export interface AppSettings {
-  projects?: string[]
+  projects?: ProjectEntry[]
   model?: string
   notifyOnDone?: boolean
 }

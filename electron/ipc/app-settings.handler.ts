@@ -2,8 +2,13 @@ import { ipcMain, app } from 'electron'
 import path from 'path'
 import { readFile, writeFile } from '../services/file.service'
 
+export interface ProjectEntry {
+  dir: string
+  alias?: string
+}
+
 export interface AppSettings {
-  projects?: string[]
+  projects?: ProjectEntry[]
   apiKey?: string
   baseUrl?: string
   model?: string

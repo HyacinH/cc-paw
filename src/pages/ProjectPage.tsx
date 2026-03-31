@@ -515,14 +515,15 @@ export default function ProjectPage() {
       {/* Modals */}
       {modal?.type === 'new-session' && (
         <SessionActionModal
-          title="开始新会话"
+          mode="new-session"
           onConfirm={(saveData) => handleModalConfirm(saveData, undefined)}
           onCancel={() => setModal(null)}
         />
       )}
       {modal?.type === 'restore' && (
         <SessionActionModal
-          title={`恢复会话：${modal.snapshot.name}`}
+          mode="restore"
+          snapshot={modal.snapshot}
           onConfirm={(saveData) => handleModalConfirm(saveData, modal.snapshot.id)}
           onCancel={() => setModal(null)}
         />

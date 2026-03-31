@@ -23,7 +23,12 @@ export const useAppSettingsStore = create<AppSettingsState>((set, get) => ({
   load: async () => {
     if (get().loaded) return
     const s = await readAppSettings()
-    set({ projects: s.projects ?? [], model: s.model, notifyOnDone: s.notifyOnDone !== false, loaded: true })
+    // Migrate old format: projects used to be string[], now ProjectEntry[]
+    const rawProjects: unknown[] = (s.projects as unknown[]) ?? []
+    const projects: ProjectEntry[] = rawProjects.map((p) =>
+      typeof p === 'string' ? { dir: p } : (p as ProjectEntry)
+    )
+    set({ projects, model: s.model, notifyOnDone: s.notifyOnDone !== false, loaded: true })
   },
 
   save: async (patch) => {

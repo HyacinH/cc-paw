@@ -67,7 +67,7 @@ export function SessionActionModal({ mode, projectDir, snapshot, existingSnapsho
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-96 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="w-[480px] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
@@ -116,7 +116,7 @@ export function SessionActionModal({ mode, projectDir, snapshot, existingSnapsho
         )}
 
         {step === 'save-form' && (
-          <div className="px-5 py-4 space-y-2">
+          <div className="px-6 py-5 space-y-3">
             {isUpdate && (
               <p className="text-[11px] text-orange-400">
                 将覆盖现有存档「{existingSnapshot!.name}」
@@ -149,7 +149,7 @@ export function SessionActionModal({ mode, projectDir, snapshot, existingSnapsho
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="简要描述本次会话的内容…"
-                rows={2}
+                rows={5}
                 maxLength={512}
                 className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-orange-400 rounded-lg px-3 py-2 pb-5 text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 outline-none resize-none transition-colors"
               />

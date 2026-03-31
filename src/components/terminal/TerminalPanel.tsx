@@ -71,7 +71,6 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.open(container)
-    fitAddon.fit()
 
     termRef.current = term
     fitAddonRef.current = fitAddon
@@ -81,25 +80,30 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       window.electronAPI.pty.write(projectDir, data).catch(() => {})
     })
 
-    // 先检查是否已有运行中的 session，有则重放缓冲区，无则启动新进程
-    window.electronAPI.pty.hasSession(projectDir).then(async (r) => {
-      const hasRunning = r.success && r.data
+    // 等浏览器完成布局后再 fit + 启动 PTY，确保尺寸准确，避免光标偏移
+    requestAnimationFrame(() => {
+      fitAddon.fit()
 
-      if (hasRunning && !newSession) {
-        // 重放历史输出
-        const bufResult = await window.electronAPI.pty.getBuffer(projectDir)
-        if (bufResult.success && bufResult.data) {
-          term.write(bufResult.data)
+      // 先检查是否已有运行中的 session，有则重放缓冲区，无则启动新进程
+      window.electronAPI.pty.hasSession(projectDir).then(async (r) => {
+        const hasRunning = r.success && r.data
+
+        if (hasRunning && !newSession) {
+          // 重放历史输出
+          const bufResult = await window.electronAPI.pty.getBuffer(projectDir)
+          if (bufResult.success && bufResult.data) {
+            term.write(bufResult.data, () => term.scrollToBottom())
+          }
+        } else {
+          // 启动新 PTY 进程
+          const result = await window.electronAPI.pty.create(projectDir, newSession, resumeId)
+          if (!result.success) {
+            term.write(`\r\n\x1b[31m错误：${(result as { error: string }).error}\x1b[0m\r\n`)
+          }
         }
-      } else {
-        // 启动新 PTY 进程
-        const result = await window.electronAPI.pty.create(projectDir, newSession, resumeId)
-        if (!result.success) {
-          term.write(`\r\n\x1b[31m错误：${(result as { error: string }).error}\x1b[0m\r\n`)
-        }
-      }
-    }).catch((err: unknown) => {
-      term.write(`\r\n\x1b[31m启动失败：${String(err)}\x1b[0m\r\n`)
+      }).catch((err: unknown) => {
+        term.write(`\r\n\x1b[31m启动失败：${String(err)}\x1b[0m\r\n`)
+      })
     })
 
     // 接收该 session 的 PTY 输出

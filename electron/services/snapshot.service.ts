@@ -44,16 +44,8 @@ export async function saveSnapshot(
 
   const store = await loadStore()
   const list = store[projectDir] ?? []
-  // Upsert: update existing entry for this session, or append as new
-  const idx = list.findIndex((s) => s.id === id)
-  if (idx >= 0) {
-    list[idx] = snapshot
-    store[projectDir] = list
-  } else {
-    store[projectDir] = [...list, snapshot]
-  }
-  // Enforce max 9 snapshots per project (keep newest)
-  store[projectDir] = store[projectDir]
+  // Upsert: drop any existing entry for this session, append updated snapshot, keep newest 9
+  store[projectDir] = [...list.filter((s) => s.id !== id), snapshot]
     .sort((a, b) => b.savedAt.localeCompare(a.savedAt))
     .slice(0, 9)
   await saveStore(store)
@@ -66,6 +58,7 @@ export async function deleteSnapshot(projectDir: string, snapshotId: string): Pr
   store[projectDir] = list.filter((s) => s.id !== snapshotId)
   await saveStore(store)
 }
+
 
 /**
  * Find the UUID of the most recently modified Claude conversation for this project.

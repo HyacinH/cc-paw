@@ -1,8 +1,55 @@
 import fs from 'fs/promises'
 import path from 'path'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import Anthropic from '@anthropic-ai/sdk'
 import { CLAUDE_PATHS } from './claude-paths'
 import { getCurrentSessionId } from './snapshot.service'
+
+const execFileAsync = promisify(execFile)
+
+interface AnthropicCredentials {
+  apiKey: string
+  baseURL?: string
+}
+
+/**
+ * Resolve Anthropic credentials from the environment or ~/.claude/settings.json,
+ * mirroring how Claude Code CLI itself resolves them at runtime.
+ *
+ * - apiKey:  process.env.ANTHROPIC_API_KEY → apiKeyHelper command
+ * - baseURL: process.env.ANTHROPIC_BASE_URL → settings.env.ANTHROPIC_BASE_URL
+ */
+async function resolveCredentials(): Promise<AnthropicCredentials> {
+  let settings: { apiKeyHelper?: string; env?: { ANTHROPIC_BASE_URL?: string } } = {}
+  try {
+    const raw = await fs.readFile(CLAUDE_PATHS.settingsJson, 'utf-8')
+    settings = JSON.parse(raw)
+  } catch { /* file missing or malformed */ }
+
+  // --- API key ---
+  let apiKey = process.env.ANTHROPIC_API_KEY ?? ''
+  if (!apiKey) {
+    const helper = settings.apiKeyHelper
+    if (typeof helper === 'string' && helper.trim()) {
+      try {
+        const { stdout } = await execFileAsync('sh', ['-c', helper], { timeout: 5000 })
+        apiKey = stdout.trim()
+      } catch { /* command failed */ }
+    }
+  }
+  if (!apiKey) {
+    throw new Error('未找到 Anthropic API Key。请设置 ANTHROPIC_API_KEY 环境变量，或在 Claude Code 设置中配置 apiKeyHelper。')
+  }
+
+  // --- Base URL ---
+  const baseURL =
+    process.env.ANTHROPIC_BASE_URL ||
+    settings.env?.ANTHROPIC_BASE_URL ||
+    undefined
+
+  return { apiKey, baseURL }
+}
 
 interface ContentBlock {
   type: string
@@ -69,14 +116,15 @@ export async function summarizeCurrentSession(projectDir: string): Promise<strin
     .map((t) => `[${t.role === 'user' ? '用户' : '助手'}]: ${t.text.slice(0, 800)}`)
     .join('\n\n')
 
-  const client = new Anthropic()  // reads ANTHROPIC_API_KEY from env
+  const { apiKey, baseURL } = await resolveCredentials()
+  const client = new Anthropic({ apiKey, baseURL })
   const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 150,
+    model: 'claude-haiku-4-5',
+    max_tokens: 200,
     messages: [
       {
         role: 'user',
-        content: `以下是一段 Claude Code 的对话记录，请用简短的文字（不超过100个中文字）概括本次会话的主要工作内容和结果。直接输出总结，不要加任何前缀或解释：\n\n${contextText}`,
+        content: `以下是一段 Claude Code 的对话记录，请按以下格式生成会话描述（总长不超过120个中文字，直接输出，不要加前缀）：\n目标：一句话说明本次会话要做什么。\n完成：简述实际完成的工作和关键结果。\n\n${contextText}`,
       },
     ],
   })
@@ -88,5 +136,5 @@ export async function summarizeCurrentSession(projectDir: string): Promise<strin
     .trim()
 
   if (!summary) throw new Error('总结生成失败')
-  return summary.slice(0, 200)
+  return summary.slice(0, 256)
 }

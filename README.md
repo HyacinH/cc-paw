@@ -3,9 +3,11 @@
 
   # CC Paw
 
+  English | [中文](README.zh.md)
+
   **A desktop GUI for managing your entire [Claude Code](https://claude.ai/code) workflow.**
 
-  [![Version](https://img.shields.io/badge/version-0.10.6-blue.svg)](package.json)
+  [![Version](https://img.shields.io/badge/version-0.11.1-blue.svg)](package.json)
   [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgray.svg)](#platform-support)
   [![Electron](https://img.shields.io/badge/Electron-33-47848F.svg)](https://electronjs.org/)

@@ -380,6 +380,7 @@ export function useProjectDir() {
 
 export default function ProjectPage() {
   const projectDir = useProjectDir()
+  const projectName = projectDir.split(/[/\\]/).pop() ?? projectDir
   const navigate = useNavigate()
   const { projects, removeProject, setAlias } = useAppSettingsStore()
   const currentEntry = projects.find((p) => p.dir === projectDir)
@@ -485,7 +486,6 @@ export default function ProjectPage() {
 
   if (!projectDir) return null
 
-  const projectName = projectDir.split(/[/\\]/).pop() ?? projectDir
   const currentSnapshot = snapshots.find((s) => s.id === currentSessionId) ?? null
 
   const handleRemove = async () => {

@@ -25,9 +25,13 @@ export const useAppSettingsStore = create<AppSettingsState>((set, get) => ({
     const s = await readAppSettings()
     // Migrate old format: projects used to be string[], now ProjectEntry[]
     const rawProjects: unknown[] = (s.projects as unknown[]) ?? []
+    const needsMigration = rawProjects.some((p) => typeof p === 'string')
     const projects: ProjectEntry[] = rawProjects.map((p) =>
       typeof p === 'string' ? { dir: p } : (p as ProjectEntry)
     )
+    if (needsMigration) {
+      await writeAppSettings({ ...s, projects })
+    }
     set({ projects, model: s.model, notifyOnDone: s.notifyOnDone !== false, loaded: true })
   },
 

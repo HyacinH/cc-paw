@@ -145,6 +145,7 @@ interface ElectronAPI {
     list: (projectDir: string) => Promise<IPCResult<SessionSnapshot[]>>
     save: (projectDir: string, name: string, description: string) => Promise<IPCResult<SessionSnapshot>>
     delete: (projectDir: string, snapshotId: string) => Promise<IPCResult<void>>
+    currentId: (projectDir: string) => Promise<IPCResult<string | null>>
   }
 }
 

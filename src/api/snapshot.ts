@@ -16,7 +16,13 @@ export async function saveSnapshot(
   return result.data
 }
 
-export async function deleteSnapshot(projectDir: string, uid: string): Promise<void> {
-  const result = await window.electronAPI.snapshot.delete(projectDir, uid)
+export async function deleteSnapshot(projectDir: string, snapshotId: string): Promise<void> {
+  const result = await window.electronAPI.snapshot.delete(projectDir, snapshotId)
   if (!result.success) throw new Error(result.error)
+}
+
+export async function getCurrentSessionId(projectDir: string): Promise<string | null> {
+  const result = await window.electronAPI.snapshot.currentId(projectDir)
+  if (!result.success) return null
+  return result.data
 }

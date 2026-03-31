@@ -11,7 +11,7 @@ import { listDocs, readDoc, writeDoc, generateDocsIndex } from '../api/docs'
 import type { DocFile } from '../types/docs.types'
 import { TerminalPanel } from '../components/terminal/TerminalPanel'
 import type { SessionSnapshot } from '../types/snapshot.types'
-import { listSnapshots, saveSnapshot, deleteSnapshot } from '../api/snapshot'
+import { listSnapshots, saveSnapshot, deleteSnapshot, getCurrentSessionId } from '../api/snapshot'
 import { SessionActionModal } from '../components/session/SessionActionModal'
 import { SnapshotDropdown } from '../components/session/SnapshotDropdown'
 
@@ -395,11 +395,16 @@ export default function ProjectPage() {
   // Dropdown state
   const [showDropdown, setShowDropdown] = useState(false)
   const [snapshots, setSnapshots] = useState<SessionSnapshot[]>([])
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
 
   const loadSnapshots = useCallback(async () => {
     if (!projectDir) return
-    const list = await listSnapshots(projectDir).catch(() => [] as SessionSnapshot[])
+    const [list, sessionId] = await Promise.all([
+      listSnapshots(projectDir).catch(() => [] as SessionSnapshot[]),
+      getCurrentSessionId(projectDir).catch(() => null),
+    ])
     setSnapshots(list)
+    setCurrentSessionId(sessionId)
   }, [projectDir])
 
   useEffect(() => {
@@ -421,6 +426,8 @@ export default function ProjectPage() {
       if (!nextResumeId) {
         await window.electronAPI.pty.clearSession(projectDir)
       }
+      // For restore: we know the new session ID immediately
+      if (nextResumeId) setCurrentSessionId(nextResumeId)
       setResumeId(nextResumeId)
       setSessionKey((k) => k + 1)
       setModal(null)
@@ -431,7 +438,7 @@ export default function ProjectPage() {
   const handleDeleteSnapshot = useCallback(
     async (snapshot: SessionSnapshot) => {
       if (!projectDir) return
-      await deleteSnapshot(projectDir, snapshot.uid).catch(() => {})
+      await deleteSnapshot(projectDir, snapshot.id).catch(() => {})
       await loadSnapshots()
     },
     [projectDir, loadSnapshots]
@@ -442,6 +449,7 @@ export default function ProjectPage() {
   if (!projectDir) return null
 
   const projectName = projectDir.split(/[/\\]/).pop() ?? projectDir
+  const currentSnapshot = snapshots.find((s) => s.id === currentSessionId) ?? null
 
   const handleRemove = async () => {
     if (!confirm(`从列表中移除项目 "${projectName}"？\n（不会删除本地文件）`)) return
@@ -456,6 +464,9 @@ export default function ProjectPage() {
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <div className="min-w-0">
           <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">{projectName}</h1>
+          {currentSnapshot && (
+            <p className="text-xs text-orange-400 font-medium truncate">{currentSnapshot.name}</p>
+          )}
           <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{projectDir}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -474,6 +485,7 @@ export default function ProjectPage() {
             {showDropdown && (
               <SnapshotDropdown
                 snapshots={snapshots}
+                currentSessionId={currentSessionId ?? undefined}
                 onRestore={(s) => { setShowDropdown(false); setModal({ type: 'restore', snapshot: s }) }}
                 onDelete={handleDeleteSnapshot}
                 onClose={handleCloseDropdown}

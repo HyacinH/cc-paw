@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { listSnapshots, saveSnapshot, deleteSnapshot } from '../services/snapshot.service'
+import { listSnapshots, saveSnapshot, deleteSnapshot, getCurrentSessionId } from '../services/snapshot.service'
 
 export function registerSnapshotHandlers(): void {
   ipcMain.handle('snapshot:list', async (_event, projectDir: string) => {
@@ -34,4 +34,13 @@ export function registerSnapshotHandlers(): void {
       }
     }
   )
+
+  ipcMain.handle('snapshot:current-id', async (_event, projectDir: string) => {
+    try {
+      const data = await getCurrentSessionId(projectDir)
+      return { success: true, data }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
 }

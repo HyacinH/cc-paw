@@ -102,5 +102,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('snapshot:save', projectDir, name, description),
     delete: (projectDir: string, snapshotId: string) =>
       ipcRenderer.invoke('snapshot:delete', projectDir, snapshotId),
+    currentId: (projectDir: string) => ipcRenderer.invoke('snapshot:current-id', projectDir),
   },
 })

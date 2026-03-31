@@ -396,11 +396,8 @@ export default function ProjectPage() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [snapshots, setSnapshots] = useState<SessionSnapshot[]>([])
 
-  if (!projectDir) return null
-
-  const projectName = projectDir.split(/[/\\]/).pop() ?? projectDir
-
   const loadSnapshots = useCallback(async () => {
+    if (!projectDir) return
     const list = await listSnapshots(projectDir).catch(() => [] as SessionSnapshot[])
     setSnapshots(list)
   }, [projectDir])
@@ -409,19 +406,13 @@ export default function ProjectPage() {
     loadSnapshots()
   }, [loadSnapshots])
 
-  const handleRemove = async () => {
-    if (!confirm(`从列表中移除项目 "${projectName}"？\n（不会删除本地文件）`)) return
-    await window.electronAPI.pty.kill(projectDir)
-    await removeProject(projectDir)
-    navigate('/')
-  }
-
   // Shared logic: optionally save snapshot, kill session, start new or resume
   const handleModalConfirm = useCallback(
     async (
       saveData: { name: string; description: string } | null,
       nextResumeId?: string
     ) => {
+      if (!projectDir) return
       if (saveData) {
         await saveSnapshot(projectDir, saveData.name, saveData.description)
         await loadSnapshots()
@@ -439,6 +430,7 @@ export default function ProjectPage() {
 
   const handleDeleteSnapshot = useCallback(
     async (snapshot: SessionSnapshot) => {
+      if (!projectDir) return
       await deleteSnapshot(projectDir, snapshot.id).catch(() => {})
       await loadSnapshots()
     },
@@ -446,6 +438,17 @@ export default function ProjectPage() {
   )
 
   const handleCloseDropdown = useCallback(() => setShowDropdown(false), [])
+
+  if (!projectDir) return null
+
+  const projectName = projectDir.split(/[/\\]/).pop() ?? projectDir
+
+  const handleRemove = async () => {
+    if (!confirm(`从列表中移除项目 "${projectName}"？\n（不会删除本地文件）`)) return
+    await window.electronAPI.pty.kill(projectDir)
+    await removeProject(projectDir)
+    navigate('/')
+  }
 
   return (
     <div className="flex flex-col h-full">

@@ -178,7 +178,7 @@ export default function Sidebar({ open, onToggle, isMac }: { open: boolean; onTo
                           : 'text-[#6b5a47] dark:text-gray-400 hover:bg-[#e8dfd0] dark:hover:bg-gray-800 hover:text-[#2d2218] dark:hover:text-gray-200'
                       )
                     }
-                    title={entry.dir}
+                    title={name}
                   >
                     <ProjectAvatar name={name} size="sm" ptyState={ptyStates[entry.dir]} />
                     <span className="flex-1 truncate">{name}</span>

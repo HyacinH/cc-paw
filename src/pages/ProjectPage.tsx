@@ -389,8 +389,10 @@ export default function ProjectPage() {
 
   const [editingAlias, setEditingAlias] = useState(false)
   const [aliasInput, setAliasInput] = useState('')
+  const aliasKeyHandled = useRef(false)
 
   const startEdit = () => {
+    aliasKeyHandled.current = false
     setAliasInput(alias ?? '')
     setEditingAlias(true)
   }
@@ -489,7 +491,7 @@ export default function ProjectPage() {
   const currentSnapshot = snapshots.find((s) => s.id === currentSessionId) ?? null
 
   const handleRemove = async () => {
-    if (!confirm(`从列表中移除项目 "${projectName}"？\n（不会删除本地文件）`)) return
+    if (!confirm(`从列表中移除项目 "${displayName}"？\n（不会删除本地文件）`)) return
     await window.electronAPI.pty.kill(projectDir)
     await removeProject(projectDir)
     navigate('/')
@@ -507,10 +509,10 @@ export default function ProjectPage() {
                 value={aliasInput}
                 onChange={(e) => setAliasInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitEdit()
-                  if (e.key === 'Escape') cancelEdit()
+                  if (e.key === 'Enter') { aliasKeyHandled.current = true; commitEdit() }
+                  if (e.key === 'Escape') { aliasKeyHandled.current = true; cancelEdit() }
                 }}
-                onBlur={commitEdit}
+                onBlur={() => { if (!aliasKeyHandled.current) commitEdit() }}
                 placeholder={projectName}
                 className="text-base font-semibold text-gray-900 dark:text-gray-100 bg-transparent border-b border-orange-400 focus:outline-none min-w-0 w-48 max-w-xs"
               />

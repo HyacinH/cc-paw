@@ -2,6 +2,7 @@ import type { MCPConfig } from './mcp.types'
 import type { IPCResult } from './ipc.types'
 import type { SkillFile } from './skill.types'
 import type { DocFile, DocsIndex } from './docs.types'
+import type { SessionSnapshot } from './snapshot.types'
 
 export interface InstalledPluginInfo {
   pluginKey: string
@@ -110,7 +111,7 @@ interface ElectronAPI {
     write: (patch: Partial<ClaudeCodeSettingsView>) => Promise<IPCResult<void>>
   }
   pty: {
-    create: (projectDir: string, newSession: boolean) => Promise<IPCResult<void>>
+    create: (projectDir: string, newSession: boolean, resumeId?: string) => Promise<IPCResult<void>>
     write: (projectDir: string, data: string) => Promise<IPCResult<void>>
     resize: (projectDir: string, cols: number, rows: number) => Promise<IPCResult<void>>
     kill: (projectDir: string) => Promise<IPCResult<void>>
@@ -139,6 +140,11 @@ interface ElectronAPI {
     listInstalled: () => Promise<IPCResult<InstalledPluginInfo[]>>
     setEnabled: (pluginKey: string, enabled: boolean) => Promise<IPCResult<void>>
     getAuthStatus: () => Promise<IPCResult<Record<string, { timestamp: number }>>>
+  }
+  snapshot: {
+    list: (projectDir: string) => Promise<IPCResult<SessionSnapshot[]>>
+    save: (projectDir: string, name: string, description: string) => Promise<IPCResult<SessionSnapshot>>
+    delete: (projectDir: string, snapshotId: string) => Promise<IPCResult<void>>
   }
 }
 

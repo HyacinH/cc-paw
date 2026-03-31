@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { MCPConfig } from '../src/types/mcp.types'
 import type { AppSettings } from './ipc/app-settings.handler'
 import type { ClaudeCodeSettingsView } from './ipc/claude-settings.handler'
+import type { SessionSnapshot } from '../src/types/snapshot.types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
@@ -38,8 +39,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     write: (patch: Partial<ClaudeCodeSettingsView>) => ipcRenderer.invoke('claude-settings:write', patch),
   },
   pty: {
-    create: (projectDir: string, newSession: boolean) =>
-      ipcRenderer.invoke('pty:create', projectDir, newSession),
+    create: (projectDir: string, newSession: boolean, resumeId?: string) =>
+      ipcRenderer.invoke('pty:create', projectDir, newSession, resumeId),
     write: (projectDir: string, data: string) => ipcRenderer.invoke('pty:write', projectDir, data),
     resize: (projectDir: string, cols: number, rows: number) => ipcRenderer.invoke('pty:resize', projectDir, cols, rows),
     kill: (projectDir: string) => ipcRenderer.invoke('pty:kill', projectDir),
@@ -94,5 +95,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setEnabled: (pluginKey: string, enabled: boolean) =>
       ipcRenderer.invoke('plugins:set-enabled', pluginKey, enabled),
     getAuthStatus: () => ipcRenderer.invoke('plugins:get-auth-status'),
+  },
+  snapshot: {
+    list: (projectDir: string) => ipcRenderer.invoke('snapshot:list', projectDir),
+    save: (projectDir: string, name: string, description: string) =>
+      ipcRenderer.invoke('snapshot:save', projectDir, name, description),
+    delete: (projectDir: string, snapshotId: string) =>
+      ipcRenderer.invoke('snapshot:delete', projectDir, snapshotId),
   },
 })

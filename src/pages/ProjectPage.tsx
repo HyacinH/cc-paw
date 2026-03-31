@@ -382,7 +382,7 @@ export default function ProjectPage() {
   const projectDir = useProjectDir()
   const projectName = projectDir.split(/[/\\]/).pop() ?? projectDir
   const navigate = useNavigate()
-  const { projects, removeProject, setAlias } = useAppSettingsStore()
+  const { projects, removeProject, setAlias, load: loadSettings } = useAppSettingsStore()
   const currentEntry = projects.find((p) => p.dir === projectDir)
   const alias = currentEntry?.alias
   const displayName = alias ?? projectName
@@ -399,8 +399,11 @@ export default function ProjectPage() {
 
   const commitEdit = async () => {
     const trimmed = aliasInput.trim()
-    await setAlias(projectDir, trimmed || undefined)
-    setEditingAlias(false)
+    try {
+      await setAlias(projectDir, trimmed || undefined)
+    } finally {
+      setEditingAlias(false)
+    }
   }
 
   const cancelEdit = () => setEditingAlias(false)
@@ -421,6 +424,8 @@ export default function ProjectPage() {
   const currentSessionIdRef = useRef<string | null>(null)
   // Keep ref in sync so handleModalConfirm can read the latest value without being in deps
   useEffect(() => { currentSessionIdRef.current = currentSessionId }, [currentSessionId])
+
+  useEffect(() => { loadSettings() }, [loadSettings])
 
   const loadSnapshots = useCallback(async () => {
     if (!projectDir) return

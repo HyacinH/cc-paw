@@ -12,13 +12,8 @@ export function SessionActionModal({ title, onConfirm, onCancel }: SessionAction
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [nameError, setNameError] = useState(false)
 
   const run = async (withSave: boolean) => {
-    if (withSave && !name.trim()) {
-      setNameError(true)
-      return
-    }
     setLoading(true)
     setError(null)
     try {
@@ -51,11 +46,9 @@ export function SessionActionModal({ title, onConfirm, onCancel }: SessionAction
           </p>
           <input
             value={name}
-            onChange={(e) => { setName(e.target.value); setNameError(false) }}
+            onChange={(e) => setName(e.target.value)}
             placeholder="存档名称"
-            className={`w-full text-xs bg-gray-50 dark:bg-gray-800 border ${
-              nameError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'
-            } focus:border-orange-400 rounded-lg px-3 py-2 text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 outline-none transition-colors`}
+            className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-orange-400 rounded-lg px-3 py-2 text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 outline-none transition-colors"
           />
           <textarea
             value={description}
@@ -64,7 +57,6 @@ export function SessionActionModal({ title, onConfirm, onCancel }: SessionAction
             rows={2}
             className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-orange-400 rounded-lg px-3 py-2 text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 outline-none resize-none transition-colors"
           />
-          {nameError && <p className="text-[11px] text-red-400">请填写存档名称</p>}
           {error && <p className="text-[11px] text-red-400">{error}</p>}
         </div>
 
@@ -86,7 +78,7 @@ export function SessionActionModal({ title, onConfirm, onCancel }: SessionAction
           </button>
           <button
             onClick={() => run(true)}
-            disabled={loading}
+            disabled={loading || !name.trim()}
             className="px-3 py-1.5 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white rounded-lg font-medium transition-colors"
           >
             {loading ? '…' : '存档并继续'}

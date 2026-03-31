@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 import { readAppSettings, writeAppSettings } from '../api/appSettings'
-import type { AppSettings } from '../types/electron'
+import type { AppSettings, ProjectEntry } from '../types/electron'
 
 interface AppSettingsState {
-  projects: string[]
+  projects: ProjectEntry[]
   model: string | undefined
   notifyOnDone: boolean
   loaded: boolean
@@ -11,6 +11,7 @@ interface AppSettingsState {
   save: (patch: Partial<AppSettings>) => Promise<void>
   addProject: (dir: string) => Promise<void>
   removeProject: (dir: string) => Promise<void>
+  setAlias: (dir: string, alias: string | undefined) => Promise<void>
 }
 
 export const useAppSettingsStore = create<AppSettingsState>((set, get) => ({
@@ -34,12 +35,21 @@ export const useAppSettingsStore = create<AppSettingsState>((set, get) => ({
 
   addProject: async (dir) => {
     const { projects, save } = get()
-    if (projects.includes(dir)) return
-    await save({ projects: [...projects, dir] })
+    if (projects.some((p) => p.dir === dir)) return
+    await save({ projects: [...projects, { dir }] })
   },
 
   removeProject: async (dir) => {
     const { projects, save } = get()
-    await save({ projects: projects.filter((p) => p !== dir) })
+    await save({ projects: projects.filter((p) => p.dir !== dir) })
+  },
+
+  setAlias: async (dir, alias) => {
+    const { projects, save } = get()
+    const updated = projects.map((p) => {
+      if (p.dir !== dir) return p
+      return alias ? { ...p, alias } : { dir: p.dir }
+    })
+    await save({ projects: updated })
   },
 }))

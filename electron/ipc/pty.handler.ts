@@ -195,10 +195,13 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
         env: fullEnv as Record<string, string>,
       })
 
+      // Don't broadcast 'running' immediately — wait for actual output so the
+      // avatar only glows once the session is doing something.
       const session: PtySession = { proc, buffer: '', state: 'running', hasHadOutput: false, doneTimer: null, doneNotifyTimer: null, hadWaitingInput: false, patternWindow: '' }
       sessions.set(projectDir, session)
 
       proc.onData((data) => {
+        // Append to rolling buffer
         session.buffer += data
         if (session.buffer.length > BUFFER_MAX) {
           session.buffer = session.buffer.slice(session.buffer.length - BUFFER_MAX)
@@ -208,17 +211,25 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
           win.webContents.send('pty:data', { projectDir, data })
         }
 
+        // First real output: start glowing
         if (!session.hasHadOutput) {
           session.hasHadOutput = true
           broadcastState(getMainWindow, projectDir, 'running')
           scheduleDone(session, projectDir, getMainWindow)
         }
 
+        // Accumulate stripped output in a small window for cross-chunk pattern matching.
+        // Some prompts (e.g. inquirer selection menus) arrive across multiple PTY chunks
+        // so checking only the current chunk would miss the full phrase.
         session.patternWindow += stripAnsi(data)
         if (session.patternWindow.length > PATTERN_WINDOW) {
           session.patternWindow = session.patternWindow.slice(-PATTERN_WINDOW)
         }
 
+        // State detection: match against the accumulated window, not just the current chunk.
+        // Once in 'waiting-input', stay there until the user actually sends input
+        // (handled in pty:write). Otherwise subsequent ANSI/redraw chunks would
+        // bounce the state back to 'running' and re-trigger the notification.
         if (detectsWaiting(session.patternWindow)) {
           enterWaitingState(session, projectDir, getMainWindow)
         } else if (session.state !== 'waiting-input') {

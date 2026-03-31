@@ -66,37 +66,22 @@ export async function getCurrentSessionId(projectDir: string): Promise<string | 
   // Encode: replace any run of non-alphanumeric chars with '-'
   const encoded = projectDir.replace(/[^a-zA-Z0-9]+/g, '-')
   const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects')
+  const dirPath = path.join(claudeProjectsDir, encoded)
 
-  // Try exact encoded match first; fall back to scanning all dirs
-  const candidates = [encoded]
   try {
-    const all = await fs.readdir(claudeProjectsDir)
-    for (const dir of all) {
-      if (!candidates.includes(dir)) candidates.push(dir)
-    }
+    const entries = await fs.readdir(dirPath)
+    const jsonlFiles = entries.filter((f) => f.endsWith('.jsonl'))
+    if (jsonlFiles.length === 0) return null
+
+    const withStats = await Promise.all(
+      jsonlFiles.map(async (f) => ({
+        name: f,
+        mtime: (await fs.stat(path.join(dirPath, f))).mtimeMs,
+      }))
+    )
+    withStats.sort((a, b) => b.mtime - a.mtime)
+    return withStats[0].name.replace(/\.jsonl$/, '')
   } catch {
     return null
   }
-
-  for (const candidate of candidates) {
-    const dirPath = path.join(claudeProjectsDir, candidate)
-    try {
-      const entries = await fs.readdir(dirPath)
-      const jsonlFiles = entries.filter((f) => f.endsWith('.jsonl'))
-      if (jsonlFiles.length === 0) continue
-
-      const withStats = await Promise.all(
-        jsonlFiles.map(async (f) => ({
-          name: f,
-          mtime: (await fs.stat(path.join(dirPath, f))).mtimeMs,
-        }))
-      )
-      withStats.sort((a, b) => b.mtime - a.mtime)
-      return withStats[0].name.replace(/\.jsonl$/, '')
-    } catch {
-      continue
-    }
-  }
-
-  return null
 }

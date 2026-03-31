@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { listSnapshots, saveSnapshot, deleteSnapshot, getCurrentSessionId } from '../services/snapshot.service'
+import { summarizeCurrentSession } from '../services/summarize.service'
 
 export function registerSnapshotHandlers(): void {
   ipcMain.handle('snapshot:list', async (_event, projectDir: string) => {
@@ -38,6 +39,15 @@ export function registerSnapshotHandlers(): void {
   ipcMain.handle('snapshot:current-id', async (_event, projectDir: string) => {
     try {
       const data = await getCurrentSessionId(projectDir)
+      return { success: true, data }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('snapshot:summarize', async (_event, projectDir: string) => {
+    try {
+      const data = await summarizeCurrentSession(projectDir)
       return { success: true, data }
     } catch (err) {
       return { success: false, error: String(err) }

@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Sparkles } from 'lucide-react'
 import type { SessionSnapshot } from '../../types/snapshot.types'
+import { summarizeSession } from '../../api/snapshot'
 
 interface SessionActionModalProps {
   mode: 'new-session' | 'restore'
+  projectDir: string
   snapshot?: SessionSnapshot       // required when mode === 'restore'
   existingSnapshot?: SessionSnapshot  // current session's existing archive, if any
   onConfirm: (saveData: { name: string; description: string } | null) => Promise<void>
@@ -23,12 +25,26 @@ function relativeTime(iso: string): string {
   return `${days} 天前`
 }
 
-export function SessionActionModal({ mode, snapshot, existingSnapshot, onConfirm, onCancel }: SessionActionModalProps) {
+export function SessionActionModal({ mode, projectDir, snapshot, existingSnapshot, onConfirm, onCancel }: SessionActionModalProps) {
   const [step, setStep] = useState<Step>(mode === 'restore' ? 'detail' : 'save-choice')
   const [name, setName] = useState(existingSnapshot?.name ?? '')
   const [description, setDescription] = useState(existingSnapshot?.description ?? '')
   const [loading, setLoading] = useState(false)
+  const [summarizing, setSummarizing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const handleSummarize = async () => {
+    setSummarizing(true)
+    setError(null)
+    try {
+      const summary = await summarizeSession(projectDir)
+      setDescription(summary)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setSummarizing(false)
+    }
+  }
 
   const actionWord = mode === 'restore' ? '恢复' : '开始'
   const isUpdate = existingSnapshot !== undefined
@@ -113,13 +129,31 @@ export function SessionActionModal({ mode, snapshot, existingSnapshot, onConfirm
               placeholder="存档名称（必填）"
               className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-orange-400 rounded-lg px-3 py-2 text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 outline-none transition-colors"
             />
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="简要描述（选填）"
-              rows={2}
-              className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-orange-400 rounded-lg px-3 py-2 text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 outline-none resize-none transition-colors"
-            />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">描述（选填）</span>
+              <button
+                type="button"
+                onClick={handleSummarize}
+                disabled={summarizing || loading}
+                className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-orange-400 disabled:opacity-40 transition-colors"
+              >
+                <Sparkles size={10} />
+                {summarizing ? '总结中…' : 'AI 总结'}
+              </button>
+            </div>
+            <div className="relative">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="简要描述本次会话的内容…"
+                rows={2}
+                maxLength={512}
+                className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-orange-400 rounded-lg px-3 py-2 pb-5 text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 outline-none resize-none transition-colors"
+              />
+              <span className={`absolute bottom-1.5 right-2 text-[10px] tabular-nums ${description.length >= 512 ? 'text-red-400' : description.length >= 460 ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'}`}>
+                {description.length}/512
+              </span>
+            </div>
             {error && <p className="text-[11px] text-red-400">{error}</p>}
           </div>
         )}

@@ -528,6 +528,7 @@ export default function ProjectPage() {
       {modal?.type === 'new-session' && (
         <SessionActionModal
           mode="new-session"
+          projectDir={projectDir}
           existingSnapshot={currentSnapshot ?? undefined}
           onConfirm={(saveData) => handleModalConfirm(saveData, undefined)}
           onCancel={() => setModal(null)}
@@ -536,6 +537,7 @@ export default function ProjectPage() {
       {modal?.type === 'restore' && (
         <SessionActionModal
           mode="restore"
+          projectDir={projectDir}
           snapshot={modal.snapshot}
           existingSnapshot={currentSnapshot ?? undefined}
           onConfirm={(saveData) => handleModalConfirm(saveData, modal.snapshot.id)}

@@ -103,5 +103,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (projectDir: string, snapshotId: string) =>
       ipcRenderer.invoke('snapshot:delete', projectDir, snapshotId),
     currentId: (projectDir: string) => ipcRenderer.invoke('snapshot:current-id', projectDir),
+    summarize: (projectDir: string) => ipcRenderer.invoke('snapshot:summarize', projectDir),
   },
 })

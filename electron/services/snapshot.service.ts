@@ -52,6 +52,10 @@ export async function saveSnapshot(
   } else {
     store[projectDir] = [...list, snapshot]
   }
+  // Enforce max 9 snapshots per project (keep newest)
+  store[projectDir] = store[projectDir]
+    .sort((a, b) => b.savedAt.localeCompare(a.savedAt))
+    .slice(0, 9)
   await saveStore(store)
   return snapshot
 }

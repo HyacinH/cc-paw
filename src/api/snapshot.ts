@@ -26,3 +26,9 @@ export async function getCurrentSessionId(projectDir: string): Promise<string | 
   if (!result.success) return null
   return result.data
 }
+
+export async function summarizeSession(projectDir: string): Promise<string> {
+  const result = await window.electronAPI.snapshot.summarize(projectDir)
+  if (!result.success) throw new Error(result.error)
+  return result.data
+}

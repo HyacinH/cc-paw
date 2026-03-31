@@ -12,6 +12,7 @@
     "postinstall": "electron-rebuild -f -w node-pty"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
@@ -44,7 +45,9 @@
     "appId": "com.ccpaw.app",
     "productName": "CC Paw",
     "icon": "resources/icon.png",
-    "directories": { "output": "release" },
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "dist/**"
     ],

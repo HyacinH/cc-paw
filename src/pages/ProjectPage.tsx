@@ -431,7 +431,7 @@ export default function ProjectPage() {
   const handleDeleteSnapshot = useCallback(
     async (snapshot: SessionSnapshot) => {
       if (!projectDir) return
-      await deleteSnapshot(projectDir, snapshot.id).catch(() => {})
+      await deleteSnapshot(projectDir, snapshot.uid).catch(() => {})
       await loadSnapshots()
     },
     [projectDir, loadSnapshots]

@@ -11,7 +11,19 @@ function snapshotsPath(): string {
 async function loadStore(): Promise<SnapshotStore> {
   try {
     const data = await fs.readFile(snapshotsPath(), 'utf-8')
-    return JSON.parse(data) as SnapshotStore
+    const store = JSON.parse(data) as SnapshotStore
+    // Migrate existing entries that lack a uid field
+    let dirty = false
+    for (const list of Object.values(store)) {
+      for (const s of list) {
+        if (!s.uid) {
+          s.uid = crypto.randomUUID()
+          dirty = true
+        }
+      }
+    }
+    if (dirty) await saveStore(store)
+    return store
   } catch {
     return {}
   }
@@ -36,6 +48,7 @@ export async function saveSnapshot(
   if (!id) throw new Error('当前没有可暂存的会话')
 
   const snapshot: SessionSnapshot = {
+    uid: crypto.randomUUID(),
     id,
     name,
     description,
@@ -49,10 +62,10 @@ export async function saveSnapshot(
   return snapshot
 }
 
-export async function deleteSnapshot(projectDir: string, snapshotId: string): Promise<void> {
+export async function deleteSnapshot(projectDir: string, uid: string): Promise<void> {
   const store = await loadStore()
   const list = store[projectDir] ?? []
-  store[projectDir] = list.filter((s) => s.id !== snapshotId)
+  store[projectDir] = list.filter((s) => s.uid !== uid)
   await saveStore(store)
 }
 

@@ -44,7 +44,7 @@ export function SnapshotDropdown({ snapshots, onRestore, onDelete, onClose }: Sn
         <ul className="max-h-80 overflow-y-auto">
           {snapshots.map((s) => (
             <li
-              key={`${s.id}-${s.savedAt}`}
+              key={s.uid}
               className="flex items-start gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50"
             >
               <div className="flex-1 min-w-0">

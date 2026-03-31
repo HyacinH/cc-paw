@@ -4,7 +4,8 @@ import type { SessionSnapshot } from '../../types/snapshot.types'
 
 interface SessionActionModalProps {
   mode: 'new-session' | 'restore'
-  snapshot?: SessionSnapshot  // required when mode === 'restore'
+  snapshot?: SessionSnapshot       // required when mode === 'restore'
+  existingSnapshot?: SessionSnapshot  // current session's existing archive, if any
   onConfirm: (saveData: { name: string; description: string } | null) => Promise<void>
   onCancel: () => void
 }
@@ -22,14 +23,15 @@ function relativeTime(iso: string): string {
   return `${days} 天前`
 }
 
-export function SessionActionModal({ mode, snapshot, onConfirm, onCancel }: SessionActionModalProps) {
+export function SessionActionModal({ mode, snapshot, existingSnapshot, onConfirm, onCancel }: SessionActionModalProps) {
   const [step, setStep] = useState<Step>(mode === 'restore' ? 'detail' : 'save-choice')
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
+  const [name, setName] = useState(existingSnapshot?.name ?? '')
+  const [description, setDescription] = useState(existingSnapshot?.description ?? '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const actionWord = mode === 'restore' ? '恢复' : '开始'
+  const isUpdate = existingSnapshot !== undefined
 
   const run = async (withSave: boolean) => {
     setLoading(true)
@@ -45,7 +47,7 @@ export function SessionActionModal({ mode, snapshot, onConfirm, onCancel }: Sess
   const headerTitle =
     step === 'detail' ? snapshot!.name
     : step === 'save-choice' ? '是否存档当前会话？'
-    : '存档当前会话'
+    : isUpdate ? '更新会话存档' : '存档当前会话'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -83,15 +85,27 @@ export function SessionActionModal({ mode, snapshot, onConfirm, onCancel }: Sess
 
         {step === 'save-choice' && (
           <div className="px-5 py-4">
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-              继续之前，可将当前会话存档以便日后找回。
-            </p>
+            {isUpdate ? (
+              <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                继续之前，可更新当前会话的存档信息。
+                <span className="block mt-1 text-orange-400 font-medium">现有存档：{existingSnapshot!.name}</span>
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                继续之前，可将当前会话存档以便日后找回。
+              </p>
+            )}
             {error && <p className="text-[11px] text-red-400 mt-2">{error}</p>}
           </div>
         )}
 
         {step === 'save-form' && (
           <div className="px-5 py-4 space-y-2">
+            {isUpdate && (
+              <p className="text-[11px] text-orange-400">
+                将覆盖现有存档「{existingSnapshot!.name}」
+              </p>
+            )}
             <input
               autoFocus
               value={name}
@@ -150,7 +164,7 @@ export function SessionActionModal({ mode, snapshot, onConfirm, onCancel }: Sess
                 disabled={loading}
                 className="px-3 py-1.5 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white rounded-lg font-medium transition-colors"
               >
-                存档
+                {isUpdate ? '更新存档' : '存档'}
               </button>
             </>
           )}
@@ -169,7 +183,7 @@ export function SessionActionModal({ mode, snapshot, onConfirm, onCancel }: Sess
                 disabled={loading || !name.trim()}
                 className="px-3 py-1.5 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white rounded-lg font-medium transition-colors"
               >
-                {loading ? '…' : `存档并${actionWord}`}
+                {loading ? '…' : isUpdate ? `更新并${actionWord}` : `存档并${actionWord}`}
               </button>
             </>
           )}

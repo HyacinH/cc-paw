@@ -47,6 +47,11 @@
   "build": {
     "appId": "com.ccpaw.app",
     "productName": "CC Paw",
+    "publish": {
+      "provider": "github",
+      "owner": "HyacinH",
+      "repo": "cc-paw"
+    },
     "icon": "resources/icon.png",
     "directories": {
       "output": "release"

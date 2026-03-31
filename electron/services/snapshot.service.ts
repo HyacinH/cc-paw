@@ -63,8 +63,8 @@ export async function deleteSnapshot(projectDir: string, snapshotId: string): Pr
  * where encoded-path replaces every non-alphanumeric char with '-'.
  */
 export async function getCurrentSessionId(projectDir: string): Promise<string | null> {
-  // Encode: replace any run of non-alphanumeric chars with '-'
-  const encoded = projectDir.replace(/[^a-zA-Z0-9]+/g, '-')
+  // Encode: replace each non-alphanumeric char with '-'
+  const encoded = projectDir.replace(/[^a-zA-Z0-9]/g, '-')
   const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects')
   const dirPath = path.join(claudeProjectsDir, encoded)
 

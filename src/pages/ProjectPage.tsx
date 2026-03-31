@@ -10,6 +10,10 @@ import { readProjectClaudeMd, writeProjectClaudeMd } from '../api/claudeMd'
 import { listDocs, readDoc, writeDoc, generateDocsIndex } from '../api/docs'
 import type { DocFile } from '../types/docs.types'
 import { TerminalPanel } from '../components/terminal/TerminalPanel'
+import type { SessionSnapshot } from '../types/snapshot.types'
+import { listSnapshots, saveSnapshot, deleteSnapshot } from '../api/snapshot'
+import { SessionActionModal } from '../components/session/SessionActionModal'
+import { SnapshotDropdown } from '../components/session/SnapshotDropdown'
 
 // ─── CLAUDE.md panel ──────────────────────────────────────────────────────────
 
@@ -379,10 +383,31 @@ export default function ProjectPage() {
   const navigate = useNavigate()
   const { removeProject } = useAppSettingsStore()
   const [sessionKey, setSessionKey] = useState(0)
+  const [resumeId, setResumeId] = useState<string | undefined>(undefined)
+
+  // Modal state: null = closed, 'new-session' or 'restore' with snapshot
+  const [modal, setModal] = useState<
+    | { type: 'new-session' }
+    | { type: 'restore'; snapshot: SessionSnapshot }
+    | null
+  >(null)
+
+  // Dropdown state
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [snapshots, setSnapshots] = useState<SessionSnapshot[]>([])
 
   if (!projectDir) return null
 
   const projectName = projectDir.split(/[/\\]/).pop() ?? projectDir
+
+  const loadSnapshots = useCallback(async () => {
+    const list = await listSnapshots(projectDir).catch(() => [] as SessionSnapshot[])
+    setSnapshots(list)
+  }, [projectDir])
+
+  useEffect(() => {
+    loadSnapshots()
+  }, [loadSnapshots])
 
   const handleRemove = async () => {
     if (!confirm(`从列表中移除项目 "${projectName}"？\n（不会删除本地文件）`)) return
@@ -391,11 +416,36 @@ export default function ProjectPage() {
     navigate('/')
   }
 
-  const handleNewSession = async () => {
-    await window.electronAPI.pty.kill(projectDir)
-    await window.electronAPI.pty.clearSession(projectDir)
-    setSessionKey((k) => k + 1)
-  }
+  // Shared logic: optionally save snapshot, kill session, start new or resume
+  const handleModalConfirm = useCallback(
+    async (
+      saveData: { name: string; description: string } | null,
+      nextResumeId?: string
+    ) => {
+      if (saveData) {
+        await saveSnapshot(projectDir, saveData.name, saveData.description)
+        await loadSnapshots()
+      }
+      await window.electronAPI.pty.kill(projectDir)
+      if (!nextResumeId) {
+        await window.electronAPI.pty.clearSession(projectDir)
+      }
+      setResumeId(nextResumeId)
+      setSessionKey((k) => k + 1)
+      setModal(null)
+    },
+    [projectDir, loadSnapshots]
+  )
+
+  const handleDeleteSnapshot = useCallback(
+    async (snapshot: SessionSnapshot) => {
+      await deleteSnapshot(projectDir, snapshot.id).catch(() => {})
+      await loadSnapshots()
+    },
+    [projectDir, loadSnapshots]
+  )
+
+  const handleCloseDropdown = useCallback(() => setShowDropdown(false), [])
 
   return (
     <div className="flex flex-col h-full">
@@ -406,14 +456,38 @@ export default function ProjectPage() {
           <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{projectDir}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* 暂存会话 dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                loadSnapshots()
+                setShowDropdown((v) => !v)
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded-md transition-colors"
+              title="查看暂存会话"
+            >
+              暂存会话 ▾
+            </button>
+            {showDropdown && (
+              <SnapshotDropdown
+                snapshots={snapshots}
+                onRestore={(s) => { setShowDropdown(false); setModal({ type: 'restore', snapshot: s }) }}
+                onDelete={handleDeleteSnapshot}
+                onClose={handleCloseDropdown}
+              />
+            )}
+          </div>
+
+          {/* 新会话 */}
           <button
-            onClick={handleNewSession}
+            onClick={() => setModal({ type: 'new-session' })}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded-md transition-colors"
-            title="清除 session，开始新会话"
+            title="开始新会话"
           >
             <RotateCcw size={12} />
             新会话
           </button>
+
           <button
             onClick={handleRemove}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-md transition-colors"
@@ -430,9 +504,26 @@ export default function ProjectPage() {
         <TerminalPanel
           key={`${projectDir}-${sessionKey}`}
           projectDir={projectDir}
-          newSession={sessionKey > 0}
+          newSession={sessionKey > 0 && !resumeId}
+          resumeId={resumeId}
         />
       </div>
+
+      {/* Modals */}
+      {modal?.type === 'new-session' && (
+        <SessionActionModal
+          title="开始新会话"
+          onConfirm={(saveData) => handleModalConfirm(saveData, undefined)}
+          onCancel={() => setModal(null)}
+        />
+      )}
+      {modal?.type === 'restore' && (
+        <SessionActionModal
+          title={`恢复会话：${modal.snapshot.name}`}
+          onConfirm={(saveData) => handleModalConfirm(saveData, modal.snapshot.id)}
+          onCancel={() => setModal(null)}
+        />
+      )}
     </div>
   )
 }

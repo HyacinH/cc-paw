@@ -37,9 +37,10 @@ const LIGHT_THEME = {
 interface TerminalPanelProps {
   projectDir: string
   newSession: boolean
+  resumeId?: string
 }
 
-export function TerminalPanel({ projectDir, newSession }: TerminalPanelProps) {
+export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -92,7 +93,7 @@ export function TerminalPanel({ projectDir, newSession }: TerminalPanelProps) {
         }
       } else {
         // 启动新 PTY 进程
-        const result = await window.electronAPI.pty.create(projectDir, newSession)
+        const result = await window.electronAPI.pty.create(projectDir, newSession, resumeId)
         if (!result.success) {
           term.write(`\r\n\x1b[31m错误：${(result as { error: string }).error}\x1b[0m\r\n`)
         }

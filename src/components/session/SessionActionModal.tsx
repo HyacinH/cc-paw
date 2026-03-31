@@ -91,23 +91,13 @@ export function SessionActionModal({ title, onConfirm, onCancel }: SessionAction
           >
             取消
           </button>
-          {wantSave ? (
-            <button
-              onClick={() => handleConfirm(true)}
-              disabled={loading || !name.trim()}
-              className="px-3 py-1.5 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white rounded-md font-medium transition-colors"
-            >
-              {loading ? '…' : '暂存并继续'}
-            </button>
-          ) : (
-            <button
-              onClick={() => handleConfirm(false)}
-              disabled={loading}
-              className="px-3 py-1.5 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white rounded-md font-medium transition-colors"
-            >
-              {loading ? '…' : '直接继续'}
-            </button>
-          )}
+          <button
+            onClick={() => handleConfirm(wantSave)}
+            disabled={loading || (wantSave && !name.trim())}
+            className="px-3 py-1.5 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white rounded-md font-medium transition-colors"
+          >
+            {loading ? '…' : wantSave ? '暂存并继续' : '直接继续'}
+          </button>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
-import os from 'os'
+import { CLAUDE_PATHS } from './claude-paths'
 import type { SessionSnapshot, SnapshotStore } from '../../src/types/snapshot.types'
 
 function snapshotsPath(): string {
@@ -65,8 +65,7 @@ export async function deleteSnapshot(projectDir: string, snapshotId: string): Pr
 export async function getCurrentSessionId(projectDir: string): Promise<string | null> {
   // Encode: replace each non-alphanumeric char with '-'
   const encoded = projectDir.replace(/[^a-zA-Z0-9]/g, '-')
-  const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects')
-  const dirPath = path.join(claudeProjectsDir, encoded)
+  const dirPath = path.join(CLAUDE_PATHS.projectsDir, encoded)
 
   try {
     const entries = await fs.readdir(dirPath)

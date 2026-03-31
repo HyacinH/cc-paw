@@ -161,7 +161,7 @@ export function cleanupPty(): void {
 }
 
 export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): void {
-  ipcMain.handle('pty:create', async (_event, projectDir: string, newSession: boolean) => {
+  ipcMain.handle('pty:create', async (_event, projectDir: string, newSession: boolean, resumeId?: string) => {
     // Close any existing session for this dir
     const existing = sessions.get(projectDir)
     if (existing) {
@@ -173,8 +173,14 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
 
     const fullEnv = getShellEnv()
     const claudeBin = findClaude()
-    const shouldContinue = !newSession && await hasPreviousSession(projectDir)
-    const claudeArgs = shouldContinue ? ['--continue'] : []
+
+    let claudeArgs: string[]
+    if (resumeId) {
+      claudeArgs = ['--resume', resumeId]
+    } else {
+      const shouldContinue = !newSession && await hasPreviousSession(projectDir)
+      claudeArgs = shouldContinue ? ['--continue'] : []
+    }
 
     const [spawnFile, spawnArgs] = isWin && claudeBin.endsWith('.cmd')
       ? ['cmd.exe', ['/c', claudeBin, ...claudeArgs]]

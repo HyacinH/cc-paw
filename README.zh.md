@@ -98,13 +98,24 @@ Skills 是存放在 `~/.claude/skills/` 的 Markdown 提示词模板，在 Claud
 - **npm** 9+
 - 已安装 **Claude Code** CLI（需要 `~/.claude/` 目录存在）
 
-**仅 Windows** — `node-pty` 是 C++ 原生模块，需要编译器支持：
+**仅 Windows** — `node-pty` 是 C++ 原生模块，需要编译器工具链。在**管理员 PowerShell** 中运行：
 
 ```powershell
-# 以管理员身份运行
-winget install Microsoft.VisualStudio.2022.BuildTools   # 勾选"使用 C++ 的桌面开发"
+winget install Microsoft.VisualStudio.2022.BuildTools
 winget install Python.Python.3.11
-npm config set msvs_version 2022
+```
+
+安装 Build Tools 后，打开 **Visual Studio Installer → 修改**：
+
+- **工作负载**选项卡：勾选**使用 C++ 的桌面开发**
+- **单个组件**选项卡：搜索 `Spectre`，勾选 **MSVC v143 - VS 2022 C++ x64/x86 Spectre 缓解库**
+
+> Spectre 缓解库**默认不勾选**，但 `node-gyp` 编译时必须。缺少它会导致 `npm install` 报 Spectre 或 `node-gyp` 相关错误。
+
+然后在 **CMD 或 PowerShell** 中运行（请勿使用 Git Bash——路径处理方式不同）：
+
+```cmd
+npm install
 ```
 
 > **最低 Windows 版本：** Windows 10 版本 1903（Build 18362）或更高 — ConPTY 所需。

@@ -159,13 +159,14 @@ export default function Sidebar({ open, onToggle, isMac }: { open: boolean; onTo
 
             <SectionLabel>项目</SectionLabel>
 
-            {loaded && projects.map((dir) => {
-              const name = dir.split(/[/\\]/).pop() ?? dir
-              const encoded = encodeURIComponent(dir)
+            {loaded && projects.map((entry) => {
+              const folderName = entry.dir.split(/[/\\]/).pop() ?? entry.dir
+              const name = entry.alias ?? folderName
+              const encoded = encodeURIComponent(entry.dir)
               const isExpanded = activeEncoded === encoded
 
               return (
-                <div key={dir}>
+                <div key={entry.dir}>
                   <NavLink
                     to={`/project/${encoded}`}
                     end
@@ -177,9 +178,9 @@ export default function Sidebar({ open, onToggle, isMac }: { open: boolean; onTo
                           : 'text-[#6b5a47] dark:text-gray-400 hover:bg-[#e8dfd0] dark:hover:bg-gray-800 hover:text-[#2d2218] dark:hover:text-gray-200'
                       )
                     }
-                    title={dir}
+                    title={name}
                   >
-                    <ProjectAvatar name={name} size="sm" ptyState={ptyStates[dir]} />
+                    <ProjectAvatar name={name} size="sm" ptyState={ptyStates[entry.dir]} />
                     <span className="flex-1 truncate">{name}</span>
                   </NavLink>
 
@@ -268,12 +269,13 @@ export default function Sidebar({ open, onToggle, isMac }: { open: boolean; onTo
 
           <div className="w-6 border-t border-[#e2d9c8] dark:border-gray-700 my-1" />
 
-          {loaded && projects.map((dir) => {
-            const name = dir.split(/[/\\]/).pop() ?? dir
+          {loaded && projects.map((entry) => {
+            const folderName = entry.dir.split(/[/\\]/).pop() ?? entry.dir
+            const name = entry.alias ?? folderName
             return (
               <NavLink
-                key={dir}
-                to={`/project/${encodeURIComponent(dir)}`}
+                key={entry.dir}
+                to={`/project/${encodeURIComponent(entry.dir)}`}
                 title={name}
                 className={({ isActive }) =>
                   clsx(
@@ -282,7 +284,7 @@ export default function Sidebar({ open, onToggle, isMac }: { open: boolean; onTo
                   )
                 }
               >
-                <ProjectAvatar name={name} size="lg" ptyState={ptyStates[dir]} />
+                <ProjectAvatar name={name} size="lg" ptyState={ptyStates[entry.dir]} />
               </NavLink>
             )
           })}

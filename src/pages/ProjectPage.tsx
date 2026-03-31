@@ -10,6 +10,10 @@ import { readProjectClaudeMd, writeProjectClaudeMd } from '../api/claudeMd'
 import { listDocs, readDoc, writeDoc, generateDocsIndex } from '../api/docs'
 import type { DocFile } from '../types/docs.types'
 import { TerminalPanel } from '../components/terminal/TerminalPanel'
+import type { SessionSnapshot } from '../types/snapshot.types'
+import { listSnapshots, saveSnapshot, deleteSnapshot, getCurrentSessionId } from '../api/snapshot'
+import { SessionActionModal } from '../components/session/SessionActionModal'
+import { SnapshotDropdown } from '../components/session/SnapshotDropdown'
 
 // ─── CLAUDE.md panel ──────────────────────────────────────────────────────────
 
@@ -376,25 +380,126 @@ export function useProjectDir() {
 
 export default function ProjectPage() {
   const projectDir = useProjectDir()
+  const projectName = projectDir.split(/[/\\]/).pop() ?? projectDir
   const navigate = useNavigate()
-  const { removeProject } = useAppSettingsStore()
+  const { projects, removeProject, setAlias, load: loadSettings } = useAppSettingsStore()
+  const currentEntry = projects.find((p) => p.dir === projectDir)
+  const alias = currentEntry?.alias
+  const displayName = alias ?? projectName
+
+  const [editingAlias, setEditingAlias] = useState(false)
+  const [aliasInput, setAliasInput] = useState('')
+  const aliasKeyHandled = useRef(false)
+
+  const startEdit = () => {
+    aliasKeyHandled.current = false
+    setAliasInput(alias ?? '')
+    setEditingAlias(true)
+  }
+
+  const commitEdit = async () => {
+    const trimmed = aliasInput.trim()
+    try {
+      await setAlias(projectDir, trimmed || undefined)
+    } finally {
+      setEditingAlias(false)
+    }
+  }
+
+  const cancelEdit = () => setEditingAlias(false)
   const [sessionKey, setSessionKey] = useState(0)
+  const [resumeId, setResumeId] = useState<string | undefined>(undefined)
+
+  // Modal state: null = closed, 'new-session' or 'restore' with snapshot
+  const [modal, setModal] = useState<
+    | { type: 'new-session' }
+    | { type: 'restore'; snapshot: SessionSnapshot }
+    | null
+  >(null)
+
+  // Dropdown state
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [snapshots, setSnapshots] = useState<SessionSnapshot[]>([])
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const currentSessionIdRef = useRef<string | null>(null)
+  // Keep ref in sync so handleModalConfirm can read the latest value without being in deps
+  useEffect(() => { currentSessionIdRef.current = currentSessionId }, [currentSessionId])
+
+  useEffect(() => { loadSettings() }, [loadSettings])
+
+  const loadSnapshots = useCallback(async () => {
+    if (!projectDir) return
+    const [list, sessionId] = await Promise.all([
+      listSnapshots(projectDir).catch(() => [] as SessionSnapshot[]),
+      getCurrentSessionId(projectDir).catch(() => null),
+    ])
+    setSnapshots(list)
+    setCurrentSessionId(sessionId)
+  }, [projectDir])
+
+  useEffect(() => {
+    loadSnapshots()
+  }, [loadSnapshots])
+
+  // Shared logic: optionally save snapshot, kill session, start new or resume
+  const handleModalConfirm = useCallback(
+    async (
+      saveData: { name: string; description: string } | null,
+      nextResumeId?: string
+    ) => {
+      if (!projectDir) return
+      if (saveData) {
+        await saveSnapshot(projectDir, saveData.name, saveData.description)
+        await loadSnapshots()
+      }
+      await window.electronAPI.pty.kill(projectDir)
+      if (nextResumeId) {
+        // Restore: session ID is known immediately
+        setCurrentSessionId(nextResumeId)
+      } else {
+        // New session: clear stale name right away, then poll until Claude Code
+        // creates the new JSONL (a different ID from the previous one)
+        await window.electronAPI.pty.clearSession(projectDir)
+        const prevId = currentSessionIdRef.current
+        setCurrentSessionId(null)
+        let attempts = 0
+        const poll = async () => {
+          if (attempts++ >= 10) return
+          try {
+            const id = await getCurrentSessionId(projectDir)
+            if (id && id !== prevId) { setCurrentSessionId(id); return }
+          } catch { /* ignore */ }
+          setTimeout(poll, 800)
+        }
+        setTimeout(poll, 1000)
+      }
+      setResumeId(nextResumeId)
+      setSessionKey((k) => k + 1)
+      setModal(null)
+    },
+    [projectDir, loadSnapshots]
+  )
+
+  const handleDeleteSnapshot = useCallback(
+    async (snapshot: SessionSnapshot) => {
+      if (!projectDir) return
+      await deleteSnapshot(projectDir, snapshot.id).catch(() => {})
+      await loadSnapshots()
+    },
+    [projectDir, loadSnapshots]
+  )
+
+  const handleCloseDropdown = useCallback(() => setShowDropdown(false), [])
 
   if (!projectDir) return null
 
-  const projectName = projectDir.split(/[/\\]/).pop() ?? projectDir
+  const currentSnapshot = snapshots.find((s) => s.id === currentSessionId) ?? null
 
   const handleRemove = async () => {
-    if (!confirm(`从列表中移除项目 "${projectName}"？\n（不会删除本地文件）`)) return
+    if (!confirm(`从列表中移除项目 "${displayName}"？\n（不会删除本地文件）`)) return
     await window.electronAPI.pty.kill(projectDir)
     await removeProject(projectDir)
     navigate('/')
-  }
-
-  const handleNewSession = async () => {
-    await window.electronAPI.pty.kill(projectDir)
-    await window.electronAPI.pty.clearSession(projectDir)
-    setSessionKey((k) => k + 1)
   }
 
   return (
@@ -402,18 +507,70 @@ export default function ProjectPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <div className="min-w-0">
-          <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">{projectName}</h1>
+          <div className="flex items-baseline gap-1.5 min-w-0">
+            {editingAlias ? (
+              <input
+                autoFocus
+                value={aliasInput}
+                onChange={(e) => setAliasInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { aliasKeyHandled.current = true; commitEdit() }
+                  if (e.key === 'Escape') { aliasKeyHandled.current = true; cancelEdit() }
+                }}
+                onBlur={() => { if (!aliasKeyHandled.current) commitEdit() }}
+                placeholder={projectName}
+                className="text-base font-semibold text-gray-900 dark:text-gray-100 bg-transparent border-b border-orange-400 focus:outline-none min-w-0 w-48 max-w-xs"
+              />
+            ) : (
+              <button
+                onClick={startEdit}
+                title={`${displayName}（点击设置别名）`}
+                className="group flex items-center gap-1 min-w-0"
+              >
+                <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{displayName}</h1>
+                <Pencil size={11} className="shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            )}
+            {currentSnapshot && (
+              <span className="shrink-0 text-xs text-orange-400/80 font-medium truncate max-w-[180px]">· {currentSnapshot.name}</span>
+            )}
+          </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{projectDir}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* 会话存档 dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                loadSnapshots()
+                setShowDropdown((v) => !v)
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded-md transition-colors"
+              title="查看会话存档"
+            >
+              会话存档 ▾
+            </button>
+            {showDropdown && (
+              <SnapshotDropdown
+                snapshots={snapshots}
+                currentSessionId={currentSessionId ?? undefined}
+                onRestore={(s) => { setShowDropdown(false); setModal({ type: 'restore', snapshot: s }) }}
+                onDelete={handleDeleteSnapshot}
+                onClose={handleCloseDropdown}
+              />
+            )}
+          </div>
+
+          {/* 新会话 */}
           <button
-            onClick={handleNewSession}
+            onClick={() => setModal({ type: 'new-session' })}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded-md transition-colors"
-            title="清除 session，开始新会话"
+            title="开始新会话"
           >
             <RotateCcw size={12} />
             新会话
           </button>
+
           <button
             onClick={handleRemove}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-md transition-colors"
@@ -430,9 +587,31 @@ export default function ProjectPage() {
         <TerminalPanel
           key={`${projectDir}-${sessionKey}`}
           projectDir={projectDir}
-          newSession={sessionKey > 0}
+          newSession={sessionKey > 0 && !resumeId}
+          resumeId={resumeId}
         />
       </div>
+
+      {/* Modals */}
+      {modal?.type === 'new-session' && (
+        <SessionActionModal
+          mode="new-session"
+          projectDir={projectDir}
+          existingSnapshot={currentSnapshot ?? undefined}
+          onConfirm={(saveData) => handleModalConfirm(saveData, undefined)}
+          onCancel={() => setModal(null)}
+        />
+      )}
+      {modal?.type === 'restore' && (
+        <SessionActionModal
+          mode="restore"
+          projectDir={projectDir}
+          snapshot={modal.snapshot}
+          existingSnapshot={currentSnapshot ?? undefined}
+          onConfirm={(saveData) => handleModalConfirm(saveData, modal.snapshot.id)}
+          onCancel={() => setModal(null)}
+        />
+      )}
     </div>
   )
 }

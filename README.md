@@ -98,13 +98,24 @@ Directly edits `~/.claude/settings.json`, shared with Claude Code CLI:
 - **npm** 9+
 - **Claude Code** CLI installed (`~/.claude/` must exist)
 
-**Windows only** — `node-pty` is a native C++ module and requires a compiler:
+**Windows only** — `node-pty` is a native C++ module and requires a compiler toolchain. Run the following in an **Administrator** PowerShell:
 
 ```powershell
-# Run as Administrator
-winget install Microsoft.VisualStudio.2022.BuildTools   # check "Desktop development with C++"
+winget install Microsoft.VisualStudio.2022.BuildTools
 winget install Python.Python.3.11
-npm config set msvs_version 2022
+```
+
+After installing Build Tools, open **Visual Studio Installer → Modify**:
+
+- **Workloads** tab: check **Desktop development with C++**
+- **Individual components** tab: search `Spectre` and check **MSVC v143 - VS 2022 C++ x64/x86 Spectre-mitigated libs**
+
+> The Spectre-mitigated libs are **not selected by default** but are required by `node-gyp`. Without them, `npm install` will fail with a Spectre or `node-gyp` error.
+
+Then run in **CMD or PowerShell** (not Git Bash — path handling differs):
+
+```cmd
+npm install
 ```
 
 > **Minimum Windows version:** Windows 10 1903 (Build 18362) or later — required for ConPTY.

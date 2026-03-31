@@ -137,8 +137,11 @@ export function SessionActionModal({ mode, projectDir, snapshot, existingSnapsho
                 disabled={summarizing || loading}
                 className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-orange-400 disabled:opacity-40 transition-colors"
               >
-                <Sparkles size={10} />
-                {summarizing ? '总结中…' : 'AI 总结'}
+                {summarizing ? (
+                  <span className="animate-spin inline-block w-2.5 h-2.5 border border-current border-t-transparent rounded-full" />
+                ) : (
+                  <Sparkles size={10} />
+                )}
               </button>
             </div>
             <div className="relative">

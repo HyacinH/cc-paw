@@ -517,7 +517,7 @@ export default function ProjectPage() {
             ) : (
               <button
                 onClick={startEdit}
-                title="点击设置别名"
+                title={`${displayName}（点击设置别名）`}
                 className="group flex items-center gap-1 min-w-0"
               >
                 <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{displayName}</h1>

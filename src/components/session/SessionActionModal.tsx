@@ -54,7 +54,7 @@ export function SessionActionModal({ title, onConfirm, onCancel }: SessionAction
               onChange={(e) => setWantSave(e.target.checked)}
               className="w-3.5 h-3.5 accent-orange-500"
             />
-            <span className="text-xs text-gray-700 dark:text-gray-300">暂存当前会话</span>
+            <span className="text-xs text-gray-700 dark:text-gray-300">存档当前会话</span>
           </label>
 
           {/* Save form (only shown when checkbox is checked) */}
@@ -96,7 +96,7 @@ export function SessionActionModal({ title, onConfirm, onCancel }: SessionAction
             disabled={loading || (wantSave && !name.trim())}
             className="px-3 py-1.5 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white rounded-md font-medium transition-colors"
           >
-            {loading ? '…' : wantSave ? '暂存并继续' : '直接继续'}
+            {loading ? '…' : wantSave ? '存档并继续' : '直接继续'}
           </button>
         </div>
       </div>

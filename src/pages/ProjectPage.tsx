@@ -459,7 +459,7 @@ export default function ProjectPage() {
           <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{projectDir}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* 暂存会话 dropdown */}
+          {/* 会话存档 dropdown */}
           <div className="relative">
             <button
               onClick={() => {
@@ -467,9 +467,9 @@ export default function ProjectPage() {
                 setShowDropdown((v) => !v)
               }}
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded-md transition-colors"
-              title="查看暂存会话"
+              title="查看会话存档"
             >
-              暂存会话 ▾
+              会话存档 ▾
             </button>
             {showDropdown && (
               <SnapshotDropdown

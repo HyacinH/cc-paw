@@ -38,13 +38,13 @@ export function SnapshotDropdown({ snapshots, onRestore, onDelete, onClose }: Sn
     >
       <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600">
-          暂存会话
+          会话存档
         </span>
       </div>
 
       {snapshots.length === 0 ? (
         <p className="px-4 py-4 text-xs text-gray-400 dark:text-gray-600 text-center">
-          暂无暂存会话
+          暂无会话存档
         </p>
       ) : (
         <ul className="max-h-72 overflow-y-auto">

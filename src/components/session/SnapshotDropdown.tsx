@@ -35,13 +35,8 @@ export function SnapshotDropdown({ snapshots, onRestore, onDelete, onClose }: Sn
     <div
       ref={ref}
       className="absolute right-0 top-full mt-1 z-40 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl overflow-hidden"
-    >
-      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600">
-          会话存档
-        </span>
-      </div>
 
+    >
       {snapshots.length === 0 ? (
         <p className="px-4 py-4 text-xs text-gray-400 dark:text-gray-600 text-center">
           暂无会话存档

@@ -8,15 +8,15 @@ interface SessionActionModalProps {
 }
 
 export function SessionActionModal({ title, onConfirm, onCancel }: SessionActionModalProps) {
-  const [wantSave, setWantSave] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [nameError, setNameError] = useState(false)
 
-  const handleConfirm = async (withSave: boolean) => {
+  const run = async (withSave: boolean) => {
     if (withSave && !name.trim()) {
-      setError('请填写会话名称')
+      setNameError(true)
       return
     }
     setLoading(true)
@@ -30,73 +30,66 @@ export function SessionActionModal({ title, onConfirm, onCancel }: SessionAction
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-96 bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="w-88 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
           <button
             onClick={onCancel}
             disabled={loading}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-40"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-40 transition-colors"
           >
             <X size={14} />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="px-5 py-4 space-y-3">
-          {/* Toggle: save current session */}
-          <label className="flex items-center gap-2.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={wantSave}
-              onChange={(e) => setWantSave(e.target.checked)}
-              className="w-3.5 h-3.5 accent-orange-500"
-            />
-            <span className="text-xs text-gray-700 dark:text-gray-300">存档当前会话</span>
-          </label>
-
-          {/* Save form (only shown when checkbox is checked) */}
-          {wantSave && (
-            <div className="space-y-2 pl-6">
-              <input
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="会话名称（必填）"
-                className="w-full text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-orange-500 rounded-md px-3 py-1.5 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 outline-none"
-              />
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="简要描述（选填）"
-                rows={2}
-                className="w-full text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-orange-500 rounded-md px-3 py-1.5 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 outline-none resize-none"
-              />
-            </div>
-          )}
-
-          {error && (
-            <p className="text-xs text-red-400">{error}</p>
-          )}
+        {/* Body — save form always visible */}
+        <div className="px-5 pt-4 pb-3 space-y-2">
+          <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+            存档当前会话（选填）
+          </p>
+          <input
+            value={name}
+            onChange={(e) => { setName(e.target.value); setNameError(false) }}
+            placeholder="存档名称"
+            className={`w-full text-xs bg-gray-50 dark:bg-gray-800 border ${
+              nameError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'
+            } focus:border-orange-400 rounded-lg px-3 py-2 text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 outline-none transition-colors`}
+          />
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="简要描述（选填）"
+            rows={2}
+            className="w-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-orange-400 rounded-lg px-3 py-2 text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 outline-none resize-none transition-colors"
+          />
+          {nameError && <p className="text-[11px] text-red-400">请填写存档名称</p>}
+          {error && <p className="text-[11px] text-red-400">{error}</p>}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 dark:border-gray-800">
           <button
             onClick={onCancel}
             disabled={loading}
-            className="px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-40 rounded-md transition-colors"
+            className="px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-40 transition-colors"
           >
             取消
           </button>
           <button
-            onClick={() => handleConfirm(wantSave)}
-            disabled={loading || (wantSave && !name.trim())}
-            className="px-3 py-1.5 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white rounded-md font-medium transition-colors"
+            onClick={() => run(false)}
+            disabled={loading}
+            className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40 rounded-lg transition-colors"
           >
-            {loading ? '…' : wantSave ? '存档并继续' : '直接继续'}
+            {loading ? '…' : '直接继续'}
+          </button>
+          <button
+            onClick={() => run(true)}
+            disabled={loading}
+            className="px-3 py-1.5 text-xs bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white rounded-lg font-medium transition-colors"
+          >
+            {loading ? '…' : '存档并继续'}
           </button>
         </div>
       </div>

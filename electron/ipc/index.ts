@@ -10,6 +10,7 @@ import { registerDocsHandlers } from './docs.handler'
 import { registerShellHandlers } from './shell.handler'
 import { registerPluginsHandlers } from './plugins.handler'
 import { registerUsageHandlers } from './usage.handler'
+import { registerSnapshotHandlers } from './snapshot.handler'
 
 export { cleanupPty }
 
@@ -25,4 +26,5 @@ export function registerAllHandlers(getMainWindow: () => BrowserWindow | null): 
   registerShellHandlers()
   registerPluginsHandlers()
   registerUsageHandlers()
+  registerSnapshotHandlers()
 }

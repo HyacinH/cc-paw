@@ -130,6 +130,9 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       termRef.current = null
       fitAddonRef.current = null
     }
+  // resumeId is intentionally omitted from deps: ProjectPage forces a full remount via
+  // key={`${projectDir}-${sessionKey}`} whenever resumeId changes, so the effect always
+  // runs fresh with the correct value. eslint-disable covers the omission.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectDir, newSession])
 

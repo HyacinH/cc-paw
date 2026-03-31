@@ -9,15 +9,20 @@ interface ContentBlock {
   text?: string
 }
 
-function extractText(content: unknown): string {
+/** Extract only plain-text blocks, skipping tool_use / tool_result noise. */
+function extractTextBlocks(content: unknown): string {
   if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return (content as ContentBlock[])
-      .filter((c) => c.type === 'text' && typeof c.text === 'string')
-      .map((c) => c.text!)
-      .join(' ')
-  }
-  return ''
+  if (!Array.isArray(content)) return ''
+  return (content as ContentBlock[])
+    .filter((c) => c.type === 'text' && typeof c.text === 'string')
+    .map((c) => c.text!)
+    .join('\n')
+    .trim()
+}
+
+interface Turn {
+  role: 'user' | 'assistant'
+  text: string
 }
 
 export async function summarizeCurrentSession(projectDir: string): Promise<string> {
@@ -27,24 +32,42 @@ export async function summarizeCurrentSession(projectDir: string): Promise<strin
   const encoded = projectDir.replace(/[^a-zA-Z0-9]/g, '-')
   const filePath = path.join(CLAUDE_PATHS.projectsDir, encoded, `${sessionId}.jsonl`)
 
-  const data = await fs.readFile(filePath, 'utf-8')
-  const lines = data.trim().split('\n').filter(Boolean)
+  const raw = await fs.readFile(filePath, 'utf-8')
+  const lines = raw.trim().split('\n').filter(Boolean)
 
-  const turns: string[] = []
+  // Parse all turns, keeping only text-bearing user/assistant messages.
+  // tool_use and tool_result blocks are discarded — they're noisy and unhelpful for summarization.
+  const allTurns: Turn[] = []
   for (const line of lines) {
     try {
       const obj = JSON.parse(line) as { type?: string; message?: { content?: unknown } }
       if (obj.type !== 'user' && obj.type !== 'assistant') continue
-      const text = extractText(obj.message?.content).trim()
+      const text = extractTextBlocks(obj.message?.content)
       if (!text) continue
-      const label = obj.type === 'user' ? 'User' : 'Assistant'
-      turns.push(`${label}: ${text.slice(0, 400)}`)
+      allTurns.push({ role: obj.type as 'user' | 'assistant', text })
     } catch { /* skip malformed lines */ }
   }
 
-  if (turns.length === 0) throw new Error('会话内容为空，无法生成总结')
+  if (allTurns.length === 0) throw new Error('会话内容为空，无法生成总结')
 
-  const context = turns.join('\n').slice(0, 6000)
+  // Build a representative context:
+  //   • First user message  → captures the original intent
+  //   • Last 20 turns       → captures what was actually done
+  // This avoids the problem of early tool noise dominating the context.
+  const firstUser = allTurns.find((t) => t.role === 'user')
+  const recent = allTurns.slice(-20)
+
+  // Deduplicate: if firstUser is already in recent, don't add it twice
+  const contextTurns: Turn[] = []
+  if (firstUser && !recent.includes(firstUser)) {
+    contextTurns.push(firstUser)
+  }
+  contextTurns.push(...recent)
+
+  // Format and cap each turn to avoid runaway lengths
+  const contextText = contextTurns
+    .map((t) => `[${t.role === 'user' ? '用户' : '助手'}]: ${t.text.slice(0, 800)}`)
+    .join('\n\n')
 
   const client = new Anthropic()  // reads ANTHROPIC_API_KEY from env
   const response = await client.messages.create({
@@ -53,7 +76,7 @@ export async function summarizeCurrentSession(projectDir: string): Promise<strin
     messages: [
       {
         role: 'user',
-        content: `以下是一段对话记录，请用简短的文字（不超过100个中文字）概括对话的主要内容。直接输出总结，不要加任何前缀或解释：\n\n${context}`,
+        content: `以下是一段 Claude Code 的对话记录，请用简短的文字（不超过100个中文字）概括本次会话的主要工作内容和结果。直接输出总结，不要加任何前缀或解释：\n\n${contextText}`,
       },
     ],
   })

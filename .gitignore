@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+release/
+
+# Generated app icons (intermediate files only; icon.icns is the committed source)
+resources/*.mjs
+
+# Claude Code local project config (personal, machine-specific)
+.claude/
+
+# Local config / AI instructions (personal, not for sharing)
+CLAUDE.md
+docs/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
+*.local

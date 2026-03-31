@@ -7,7 +7,7 @@
 
   **管理 [Claude Code](https://claude.ai/code) 全套工作流的桌面 GUI 应用。**
 
-  [![Version](https://img.shields.io/badge/版本-0.11.1-blue.svg)](package.json)
+  [![Version](https://img.shields.io/badge/版本-0.11.3-blue.svg)](package.json)
   [![License](https://img.shields.io/badge/协议-MIT-green.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/平台-macOS%20%7C%20Windows-lightgray.svg)](#平台支持)
   [![Electron](https://img.shields.io/badge/Electron-33-47848F.svg)](https://electronjs.org/)

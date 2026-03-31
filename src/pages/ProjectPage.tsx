@@ -381,7 +381,26 @@ export function useProjectDir() {
 export default function ProjectPage() {
   const projectDir = useProjectDir()
   const navigate = useNavigate()
-  const { removeProject } = useAppSettingsStore()
+  const { projects, removeProject, setAlias } = useAppSettingsStore()
+  const currentEntry = projects.find((p) => p.dir === projectDir)
+  const alias = currentEntry?.alias
+  const displayName = alias ?? projectName
+
+  const [editingAlias, setEditingAlias] = useState(false)
+  const [aliasInput, setAliasInput] = useState('')
+
+  const startEdit = () => {
+    setAliasInput(alias ?? '')
+    setEditingAlias(true)
+  }
+
+  const commitEdit = async () => {
+    const trimmed = aliasInput.trim()
+    await setAlias(projectDir, trimmed || undefined)
+    setEditingAlias(false)
+  }
+
+  const cancelEdit = () => setEditingAlias(false)
   const [sessionKey, setSessionKey] = useState(0)
   const [resumeId, setResumeId] = useState<string | undefined>(undefined)
 
@@ -396,6 +415,9 @@ export default function ProjectPage() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [snapshots, setSnapshots] = useState<SessionSnapshot[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const currentSessionIdRef = useRef<string | null>(null)
+  // Keep ref in sync so handleModalConfirm can read the latest value without being in deps
+  useEffect(() => { currentSessionIdRef.current = currentSessionId }, [currentSessionId])
 
   const loadSnapshots = useCallback(async () => {
     if (!projectDir) return
@@ -423,11 +445,26 @@ export default function ProjectPage() {
         await loadSnapshots()
       }
       await window.electronAPI.pty.kill(projectDir)
-      if (!nextResumeId) {
+      if (nextResumeId) {
+        // Restore: session ID is known immediately
+        setCurrentSessionId(nextResumeId)
+      } else {
+        // New session: clear stale name right away, then poll until Claude Code
+        // creates the new JSONL (a different ID from the previous one)
         await window.electronAPI.pty.clearSession(projectDir)
+        const prevId = currentSessionIdRef.current
+        setCurrentSessionId(null)
+        let attempts = 0
+        const poll = async () => {
+          if (attempts++ >= 10) return
+          try {
+            const id = await getCurrentSessionId(projectDir)
+            if (id && id !== prevId) { setCurrentSessionId(id); return }
+          } catch { /* ignore */ }
+          setTimeout(poll, 800)
+        }
+        setTimeout(poll, 1000)
       }
-      // For restore: we know the new session ID immediately
-      if (nextResumeId) setCurrentSessionId(nextResumeId)
       setResumeId(nextResumeId)
       setSessionKey((k) => k + 1)
       setModal(null)
@@ -463,10 +500,34 @@ export default function ProjectPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <div className="min-w-0">
-          <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">{projectName}</h1>
-          {currentSnapshot && (
-            <p className="text-xs text-orange-400 font-medium truncate">{currentSnapshot.name}</p>
-          )}
+          <div className="flex items-baseline gap-1.5 min-w-0">
+            {editingAlias ? (
+              <input
+                autoFocus
+                value={aliasInput}
+                onChange={(e) => setAliasInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitEdit()
+                  if (e.key === 'Escape') cancelEdit()
+                }}
+                onBlur={commitEdit}
+                placeholder={projectName}
+                className="text-base font-semibold text-gray-900 dark:text-gray-100 bg-transparent border-b border-orange-400 focus:outline-none min-w-0 w-48 max-w-xs"
+              />
+            ) : (
+              <button
+                onClick={startEdit}
+                title="点击设置别名"
+                className="group flex items-center gap-1 min-w-0"
+              >
+                <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{displayName}</h1>
+                <Pencil size={11} className="shrink-0 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            )}
+            {currentSnapshot && (
+              <span className="shrink-0 text-xs text-orange-400/80 font-medium truncate max-w-[180px]">· {currentSnapshot.name}</span>
+            )}
+          </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{projectDir}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

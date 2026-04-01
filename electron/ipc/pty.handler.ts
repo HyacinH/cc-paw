@@ -9,6 +9,10 @@ const BUFFER_MAX = 200 * 1024 // 200KB per session
 const DONE_TIMEOUT_MS = 10_000  // 10s of silence → Claude finished responding
 const PATTERN_WINDOW = 500      // chars of recent stripped output for cross-chunk pattern matching
 
+function ptyLog(event: string, projectDir: string, extra?: Record<string, unknown>): void {
+  console.debug(`[pty] ${event}`, { dir: path.basename(projectDir), ...extra })
+}
+
 // Strip ANSI/VT escape codes from terminal output
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b(?:\[[0-9;]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\)|[^[\]])/g
@@ -169,6 +173,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       cancelDoneNotify(existing)
       try { existing.proc.kill() } catch { /* ignore */ }
       sessions.delete(projectDir)
+      ptyLog('session:replaced', projectDir)
     }
 
     const fullEnv = getShellEnv()
@@ -182,9 +187,11 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       claudeArgs = shouldContinue ? ['--continue'] : []
     }
 
-    const [spawnFile, spawnArgs] = isWin && claudeBin.endsWith('.cmd')
+    const [spawnFile, spawnArgs] = isWin
       ? ['cmd.exe', ['/c', claudeBin, ...claudeArgs]]
       : [claudeBin, claudeArgs]
+
+    ptyLog('session:spawning', projectDir, { spawnFile, claudeArgs, newSession, resumeId })
 
     try {
       const proc = pty.spawn(spawnFile, spawnArgs, {
@@ -199,6 +206,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       // avatar only glows once the session is doing something.
       const session: PtySession = { proc, buffer: '', state: 'running', hasHadOutput: false, doneTimer: null, doneNotifyTimer: null, hadWaitingInput: false, patternWindow: '' }
       sessions.set(projectDir, session)
+      ptyLog('session:spawned', projectDir, { pid: proc.pid, cols: 80, rows: 24 })
 
       proc.onData((data) => {
         // Append to rolling buffer
@@ -214,6 +222,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
         // First real output: start glowing
         if (!session.hasHadOutput) {
           session.hasHadOutput = true
+          ptyLog('session:first-output', projectDir, { bytes: data.length })
           broadcastState(getMainWindow, projectDir, 'running')
           scheduleDone(session, projectDir, getMainWindow)
         }
@@ -243,6 +252,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
           if (s.doneTimer !== null) clearTimeout(s.doneTimer)
           sessions.delete(projectDir)
         }
+        ptyLog('session:exit', projectDir, { exitCode })
         const win = getMainWindow()
         if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
           win.webContents.send('pty:exit', { projectDir, code: exitCode })
@@ -256,6 +266,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       const msg = (err as NodeJS.ErrnoError).code === 'ENOENT'
         ? '未找到 claude 命令，请确认已安装 Claude Code CLI'
         : String(err)
+      ptyLog('session:spawn-error', projectDir, { msg })
       return { success: false, error: msg, code: 'SPAWN_ERROR' }
     }
   })
@@ -277,6 +288,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
   ipcMain.handle('pty:resize', (_event, projectDir: string, cols: number, rows: number) => {
     try {
       sessions.get(projectDir)?.proc.resize(cols, rows)
+      ptyLog('session:resize', projectDir, { cols, rows })
     } catch { /* ignore race */ }
     return { success: true, data: undefined }
   })
@@ -288,12 +300,15 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       cancelDoneNotify(session)
       try { session.proc.kill() } catch { /* ignore */ }
       sessions.delete(projectDir)
+      ptyLog('session:killed', projectDir)
     }
     return { success: true, data: undefined }
   })
 
   ipcMain.handle('pty:get-buffer', (_event, projectDir: string) => {
-    return { success: true, data: sessions.get(projectDir)?.buffer ?? '' }
+    const buf = sessions.get(projectDir)?.buffer ?? ''
+    ptyLog('session:buffer-get', projectDir, { bytes: buf.length })
+    return { success: true, data: buf }
   })
 
   ipcMain.handle('pty:clear-session', async (_event, projectDir: string) => {

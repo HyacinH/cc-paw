@@ -82,8 +82,9 @@ export function findClaude(): string {
       timeout: 3000,
     })
     if (r.status === 0 && r.stdout) {
-      // where 可能返回多行，取第一行
-      return r.stdout.trim().split('\n')[0].trim()
+      const lines = r.stdout.trim().split('\n').map(l => l.trim()).filter(Boolean)
+      // On Windows, prefer .cmd over other variants (avoids Error 193 from bash scripts)
+      return isWin ? (lines.find(l => l.endsWith('.cmd')) ?? lines[0]) : lines[0]
     }
   } catch { /* ignore */ }
 

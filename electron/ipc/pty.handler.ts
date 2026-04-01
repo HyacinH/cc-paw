@@ -182,7 +182,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       claudeArgs = shouldContinue ? ['--continue'] : []
     }
 
-    const [spawnFile, spawnArgs] = isWin && claudeBin.endsWith('.cmd')
+    const [spawnFile, spawnArgs] = isWin
       ? ['cmd.exe', ['/c', claudeBin, ...claudeArgs]]
       : [claudeBin, claudeArgs]
 

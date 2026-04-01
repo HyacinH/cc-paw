@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - 'v*'
+  release:
+    types:
+      - created
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,10 +17,16 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     steps:
-      - uses: softprops/action-gh-release@v2
+      - name: Create draft release from pushed tag
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           draft: true
+
+      - name: Use existing release created from GitHub UI
+        if: github.event_name == 'release'
+        run: echo "Using existing release for tag ${{ github.ref_name }}"
 
   build-mac:
     name: Build macOS

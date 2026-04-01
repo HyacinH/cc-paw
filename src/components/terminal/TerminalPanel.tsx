@@ -60,18 +60,16 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
     const container = containerRef.current
     if (!container) return
 
-    const sessionToken = `${projectDir}:${Date.now()}:${Math.random().toString(36).slice(2)}`
-    let activeToken = sessionToken
-    let disposed = false
-    let ready = false
+    type TerminalState = 'booting' | 'starting' | 'live' | 'disposed'
+    let state: TerminalState = 'booting'
     let preReadyBuffer = ''
     let preReadyTruncated = false
     let pendingFitTimer: ReturnType<typeof setTimeout> | null = null
 
-    const isCurrent = () => !disposed && activeToken === sessionToken
+    const isActive = () => state !== 'disposed'
 
     const log = (msg: string, extra?: Record<string, unknown>) =>
-      console.debug(`[TerminalPanel] ${msg}`, { token: sessionToken.slice(-8), ...extra })
+      console.debug(`[TerminalPanel] ${msg}`, { state, projectDir: projectDir.split(/[\\/]/).pop(), ...extra })
 
     const appendPreReadyBuffer = (data: string) => {
       preReadyBuffer += data
@@ -91,7 +89,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       log('flushing pre-ready buffer', { bytes: totalBytes, truncated: preReadyTruncated })
 
       const writeChunk = () => {
-        if (!isCurrent()) return
+        if (!isActive()) return
         const next = buffer.slice(offset, offset + PRE_READY_FLUSH_CHUNK_SIZE)
         if (!next) {
           term.scrollToBottom()
@@ -132,14 +130,14 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
 
     // 发送按键到对应的 PTY session
     term.onData((data) => {
-      if (!ready || !isCurrent()) return
+      if (state !== 'live') return
       window.electronAPI.pty.write(projectDir, data).catch(() => {})
     })
 
-    // 接收该 session 的 PTY 输出（ready 前缓存，ready 后直写）
+    // 接收该 session 的 PTY 输出（booting/starting 时缓存，live 时直写）
     const unsubData = window.electronAPI.pty.onData(projectDir, (data) => {
-      if (!isCurrent()) return
-      if (!ready) {
+      if (!isActive()) return
+      if (state !== 'live') {
         appendPreReadyBuffer(data)
         return
       }
@@ -147,8 +145,8 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
     })
 
     const unsubExit = window.electronAPI.pty.onExit(projectDir, () => {
-      if (!isCurrent()) return
-      if (!ready) {
+      if (!isActive()) return
+      if (state !== 'live') {
         appendPreReadyBuffer('\r\n\x1b[2m[进程已退出]\x1b[0m\r\n')
         return
       }
@@ -157,17 +155,17 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
     log('listeners attached')
 
     const ensureReadyThenStart = async () => {
-      if (!isCurrent()) return
+      if (!isActive()) return
 
-      // 等容器尺寸可用
+      // 等容器尺寸可用 (state: booting)
       let attempts = 0
-      while (isCurrent() && attempts < 20) {
+      while (isActive() && attempts < 20) {
         const rect = container.getBoundingClientRect()
         if (rect.width > 0 && rect.height > 0) break
         attempts += 1
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       }
-      if (!isCurrent()) return
+      if (!isActive()) return
       log('container ready', { width: container.getBoundingClientRect().width, height: container.getBoundingClientRect().height, attempts })
 
       // 首次 fit + resize
@@ -178,12 +176,15 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       } catch {
         // ignore
       }
-      if (!isCurrent()) return
+      if (!isActive()) return
+
+      // booting → starting：尺寸已同步，开始启动 PTY
+      state = 'starting'
 
       // 第二次 fit + resize（下一轮事件循环）
       pendingFitTimer = setTimeout(() => {
         pendingFitTimer = null
-        if (!isCurrent()) return
+        if (!isActive()) return
         try {
           fitAddon.fit()
           const { cols, rows } = term
@@ -196,36 +197,37 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
 
       // 先检查是否已有运行中的 session，有则重放缓冲区，无则启动新进程
       window.electronAPI.pty.hasSession(projectDir).then(async (r) => {
-        if (!isCurrent()) return
+        if (!isActive()) return
         const hasRunning = r.success && r.data
 
         if (hasRunning && !newSession) {
           // 重放历史输出
           const bufResult = await window.electronAPI.pty.getBuffer(projectDir)
-          if (!isCurrent()) return
+          if (!isActive()) return
           if (bufResult.success && bufResult.data) {
             appendPreReadyBuffer(bufResult.data)
           }
         } else {
           // 启动新 PTY 进程
           const result = await window.electronAPI.pty.create(projectDir, newSession, resumeId)
-          if (!isCurrent()) return
+          if (!isActive()) return
           if (!result.success) {
             appendPreReadyBuffer(`\r\n\x1b[31m错误：${(result as { error: string }).error}\x1b[0m\r\n`)
           }
         }
 
-        if (!isCurrent()) return
-        ready = true
-        log('ready — flushing buffer', { hasRunning, newSession })
+        if (!isActive()) return
+        // starting → live：PTY 就绪，可正常收发
+        state = 'live'
+        log('live — flushing buffer', { hasRunning, newSession })
         if (preReadyTruncated) {
           term.write('\r\n\x1b[33m[提示] 启动阶段输出较多，已截断最早部分内容。\x1b[0m\r\n')
         }
         flushPreReadyBuffer(term)
       }).catch((err: unknown) => {
-        if (!isCurrent()) return
+        if (!isActive()) return
         appendPreReadyBuffer(`\r\n\x1b[31m启动失败：${String(err)}\x1b[0m\r\n`)
-        ready = true
+        state = 'live'
         flushPreReadyBuffer(term)
       })
     }
@@ -234,7 +236,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
 
     // 监听容器尺寸变化，自动 fit
     const resizeObserver = new ResizeObserver(() => {
-      if (!isCurrent()) return
+      if (!isActive()) return
       try {
         fitAddon.fit()
         const { cols, rows } = term
@@ -245,9 +247,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
 
     return () => {
       log('unmount — disposing')
-      disposed = true
-      activeToken = '__disposed__'
-      ready = false
+      state = 'disposed'
       if (pendingFitTimer !== null) {
         clearTimeout(pendingFitTimer)
         pendingFitTimer = null

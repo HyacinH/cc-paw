@@ -2,14 +2,20 @@ import { app } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
 import { CLAUDE_PATHS } from './claude-paths'
-import type { SessionSnapshot, SnapshotStore } from '../../src/types/snapshot.types'
+import type { SessionSnapshot, SnapshotStore, CurrentSessionInfo } from '../../src/types/snapshot.types'
 
 // Runtime hint for "current session": used to avoid relying only on file mtime
 // when user explicitly restores a historical session via --resume.
 const activeSessionByProject = new Map<string, string>()
 
+
 function snapshotsPath(): string {
   return path.join(app.getPath('userData'), 'session-snapshots.json')
+}
+
+function projectSessionsDir(projectDir: string): string {
+  const encoded = projectDir.replace(/[^a-zA-Z0-9]/g, '-')
+  return path.join(CLAUDE_PATHS.projectsDir, encoded)
 }
 
 async function loadStore(): Promise<SnapshotStore> {
@@ -71,24 +77,44 @@ export function clearActiveSessionId(projectDir: string): void {
   activeSessionByProject.delete(projectDir)
 }
 
+export async function hasSessionJsonl(projectDir: string, sessionId: string): Promise<boolean> {
+  try {
+    await fs.stat(path.join(projectSessionsDir(projectDir), `${sessionId}.jsonl`))
+    return true
+  } catch {
+    return false
+  }
+}
 
 /**
- * Find the UUID of the most recently modified Claude conversation for this project.
- * Claude Code stores conversations as UUID.jsonl files in
- * ~/.claude/projects/<encoded-path>/
- * where encoded-path replaces every non-alphanumeric char with '-'.
+ * Resolve the current session id with source metadata for diagnostics.
  */
-export async function getCurrentSessionId(projectDir: string): Promise<string | null> {
+export async function getCurrentSession(projectDir: string): Promise<CurrentSessionInfo> {
+  const t0 = Date.now()
   const activeId = activeSessionByProject.get(projectDir)
-  if (activeId) return activeId
+  if (activeId) {
+    if (await hasSessionJsonl(projectDir, activeId)) {
+      console.debug('[snapshot-service] current-id:active-hit', { dir: path.basename(projectDir), ms: Date.now() - t0 })
+      return { id: activeId, source: 'active' }
+    }
 
-  const encoded = projectDir.replace(/[^a-zA-Z0-9]/g, '-')
-  const dirPath = path.join(CLAUDE_PATHS.projectsDir, encoded)
+    activeSessionByProject.delete(projectDir)
+    console.debug('[snapshot-service] current-id:active-stale', {
+      dir: path.basename(projectDir),
+      ms: Date.now() - t0,
+      activeId,
+    })
+  }
+
+  const dirPath = projectSessionsDir(projectDir)
 
   try {
     const entries = await fs.readdir(dirPath)
     const jsonlFiles = entries.filter((f) => f.endsWith('.jsonl'))
-    if (jsonlFiles.length === 0) return null
+    if (jsonlFiles.length === 0) {
+      console.debug('[snapshot-service] current-id:none', { dir: path.basename(projectDir), ms: Date.now() - t0 })
+      return { id: null, source: 'none' }
+    }
 
     const withStats = await Promise.all(
       jsonlFiles.map(async (f) => ({
@@ -97,8 +123,28 @@ export async function getCurrentSessionId(projectDir: string): Promise<string | 
       }))
     )
     withStats.sort((a, b) => b.mtime - a.mtime)
-    return withStats[0].name.replace(/\.jsonl$/, '')
+    const id = withStats[0].name.replace(/\.jsonl$/, '')
+    console.debug('[snapshot-service] current-id:scanned', {
+      dir: path.basename(projectDir),
+      ms: Date.now() - t0,
+      files: jsonlFiles.length,
+      id,
+    })
+    return { id, source: 'scan' }
   } catch {
-    return null
+    console.debug('[snapshot-service] current-id:error', { dir: path.basename(projectDir), ms: Date.now() - t0 })
+    return { id: null, source: 'error' }
   }
+}
+
+
+/**
+ * Find the UUID of the most recently modified Claude conversation for this project.
+ * Claude Code stores conversations as UUID.jsonl files in
+ * ~/.claude/projects/<encoded-path>/
+ * where encoded-path replaces every non-alphanumeric char with '-'.
+ */
+export async function getCurrentSessionId(projectDir: string): Promise<string | null> {
+  const current = await getCurrentSession(projectDir)
+  return current.id
 }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import path from 'path'
 import { registerAllHandlers, cleanupPty } from './ipc'
 import { initShellEnv } from './services/platform'
@@ -19,6 +19,12 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  })
+
+  win.webContents.on('console-message', (_event, _level, message) => {
+    if (message.startsWith('[ProjectPage +') || message.startsWith('[TerminalPanel +')) {
+      console.log(message)
+    }
   })
 
   // 所有 window.open 调用转由系统浏览器打开
@@ -48,6 +54,9 @@ app.whenReady().then(async () => {
   await initShellEnv()
   // IPC handlers registered once — never inside createWindow to avoid duplicate registration
   registerAllHandlers(() => mainWindow)
+  ipcMain.on('debug:timing', (_event, payload: { scope: string; label: string; detail?: Record<string, unknown> }) => {
+    console.log(`[${payload.scope}] ${payload.label}`, payload.detail ?? {})
+  })
   mainWindow = createWindow()
 
   app.on('activate', () => {

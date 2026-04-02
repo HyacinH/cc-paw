@@ -2,7 +2,7 @@ import type { MCPConfig } from './mcp.types'
 import type { IPCResult } from './ipc.types'
 import type { SkillFile } from './skill.types'
 import type { DocFile, DocsIndex } from './docs.types'
-import type { SessionSnapshot } from './snapshot.types'
+import type { SessionSnapshot, CurrentSessionInfo } from './snapshot.types'
 
 export interface InstalledPluginInfo {
   pluginKey: string
@@ -146,11 +146,14 @@ interface ElectronAPI {
     setEnabled: (pluginKey: string, enabled: boolean) => Promise<IPCResult<void>>
     getAuthStatus: () => Promise<IPCResult<Record<string, { timestamp: number }>>>
   }
+  debug: {
+    timing: (scope: string, label: string, detail?: Record<string, unknown>) => void
+  }
   snapshot: {
     list: (projectDir: string) => Promise<IPCResult<SessionSnapshot[]>>
     save: (projectDir: string, name: string, description: string) => Promise<IPCResult<SessionSnapshot>>
     delete: (projectDir: string, snapshotId: string) => Promise<IPCResult<void>>
-    currentId: (projectDir: string) => Promise<IPCResult<string | null>>
+    currentId: (projectDir: string) => Promise<IPCResult<CurrentSessionInfo>>
     summarize: (projectDir: string) => Promise<IPCResult<string>>
   }
 }

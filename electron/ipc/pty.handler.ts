@@ -3,6 +3,7 @@ import path from 'path'
 import * as pty from 'node-pty'
 import { hasPreviousSession, markSessionExists, clearPtySession } from '../services/session.service'
 import { getShellEnv, findClaude, isWin } from '../services/platform'
+import { setActiveSessionId, clearActiveSessionId } from '../services/snapshot.service'
 import { getNotifyOnDone } from './app-settings.handler'
 
 const BUFFER_MAX = 200 * 1024 // 200KB per session
@@ -175,6 +176,9 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       sessions.delete(projectDir)
       ptyLog('session:replaced', projectDir)
     }
+    // Reset runtime hint before deciding/starting next flow.
+    // For --resume we'll set it again only after spawn succeeds.
+    clearActiveSessionId(projectDir)
 
     const fullEnv = getShellEnv()
     const claudeBin = findClaude()
@@ -185,6 +189,9 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
     } else {
       const shouldContinue = !newSession && await hasPreviousSession(projectDir)
       claudeArgs = shouldContinue ? ['--continue'] : []
+      // For new/continue flows we don't have an explicit session UUID yet.
+      // Fall back to file-based detection until a concrete ID is known.
+      clearActiveSessionId(projectDir)
     }
 
     const [spawnFile, spawnArgs] = isWin
@@ -206,6 +213,9 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       // avatar only glows once the session is doing something.
       const session: PtySession = { proc, buffer: '', state: 'running', hasHadOutput: false, doneTimer: null, doneNotifyTimer: null, hadWaitingInput: false, patternWindow: '' }
       sessions.set(projectDir, session)
+      if (resumeId) {
+        setActiveSessionId(projectDir, resumeId)
+      }
       ptyLog('session:spawned', projectDir, { pid: proc.pid, cols: 80, rows: 24 })
 
       proc.onData((data) => {
@@ -252,6 +262,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
           if (s.doneTimer !== null) clearTimeout(s.doneTimer)
           sessions.delete(projectDir)
         }
+        clearActiveSessionId(projectDir)
         ptyLog('session:exit', projectDir, { exitCode })
         const win = getMainWindow()
         if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
@@ -302,6 +313,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       sessions.delete(projectDir)
       ptyLog('session:killed', projectDir)
     }
+    clearActiveSessionId(projectDir)
     return { success: true, data: undefined }
   })
 

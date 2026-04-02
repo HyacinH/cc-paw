@@ -425,6 +425,18 @@ export default function ProjectPage() {
   // Keep ref in sync so handleModalConfirm can read the latest value without being in deps
   useEffect(() => { currentSessionIdRef.current = currentSessionId }, [currentSessionId])
 
+  // Route param changes reuse the same component instance, so reset per-project
+  // session-control state to avoid carrying "new/restore" intent across projects.
+  useEffect(() => {
+    setSessionKey(0)
+    setResumeId(undefined)
+    setModal(null)
+    setShowDropdown(false)
+    setSnapshots([])
+    setCurrentSessionId(null)
+    currentSessionIdRef.current = null
+  }, [projectDir])
+
   useEffect(() => { loadSettings() }, [loadSettings])
 
   const loadSnapshots = useCallback(async () => {

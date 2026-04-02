@@ -4,6 +4,10 @@ import fs from 'fs/promises'
 import { CLAUDE_PATHS } from './claude-paths'
 import type { SessionSnapshot, SnapshotStore } from '../../src/types/snapshot.types'
 
+// Runtime hint for "current session": used to avoid relying only on file mtime
+// when user explicitly restores a historical session via --resume.
+const activeSessionByProject = new Map<string, string>()
+
 function snapshotsPath(): string {
   return path.join(app.getPath('userData'), 'session-snapshots.json')
 }
@@ -59,6 +63,14 @@ export async function deleteSnapshot(projectDir: string, snapshotId: string): Pr
   await saveStore(store)
 }
 
+export function setActiveSessionId(projectDir: string, sessionId: string): void {
+  activeSessionByProject.set(projectDir, sessionId)
+}
+
+export function clearActiveSessionId(projectDir: string): void {
+  activeSessionByProject.delete(projectDir)
+}
+
 
 /**
  * Find the UUID of the most recently modified Claude conversation for this project.
@@ -67,6 +79,9 @@ export async function deleteSnapshot(projectDir: string, snapshotId: string): Pr
  * where encoded-path replaces every non-alphanumeric char with '-'.
  */
 export async function getCurrentSessionId(projectDir: string): Promise<string | null> {
+  const activeId = activeSessionByProject.get(projectDir)
+  if (activeId) return activeId
+
   const encoded = projectDir.replace(/[^a-zA-Z0-9]/g, '-')
   const dirPath = path.join(CLAUDE_PATHS.projectsDir, encoded)
 

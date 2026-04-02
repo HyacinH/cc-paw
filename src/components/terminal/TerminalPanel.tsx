@@ -123,6 +123,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.open(container)
+    term.focus()
     log('mount', { projectDir, newSession, isWin, lineHeight: isWin ? 1.2 : 1.5 })
 
     termRef.current = term
@@ -153,6 +154,11 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       term.write('\r\n\x1b[2m[进程已退出]\x1b[0m\r\n')
     })
     log('listeners attached')
+    const focusTerminal = () => {
+      if (!isActive()) return
+      term.focus()
+    }
+    container.addEventListener('pointerdown', focusTerminal)
 
     const ensureReadyThenStart = async () => {
       if (!isActive()) return
@@ -168,14 +174,40 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       if (!isActive()) return
       log('container ready', { width: container.getBoundingClientRect().width, height: container.getBoundingClientRect().height, attempts })
 
-      // 首次 fit + resize
-      try {
-        fitAddon.fit()
-        await window.electronAPI.pty.resize(projectDir, term.cols, term.rows)
-        log('first fit+resize', { cols: term.cols, rows: term.rows })
-      } catch {
-        // ignore
+      // 字体尚未加载完成时，xterm 字符网格可能测量偏差，等待最多 1200ms
+      const fontsApi = (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts
+      if (fontsApi?.ready) {
+        try {
+          await Promise.race([
+            fontsApi.ready,
+            new Promise<void>((resolve) => setTimeout(resolve, 1200)),
+          ])
+          if (isActive()) log('fonts ready before first fit')
+        } catch {
+          // ignore
+        }
       }
+
+      const syncSize = async (phase: 'first' | 'pre-live') => {
+        // 若 cols/rows 仍为 0，则等待布局稳定后重试几帧
+        for (let i = 0; i < 6 && isActive(); i += 1) {
+          try {
+            fitAddon.fit()
+            if (term.cols > 0 && term.rows > 0) {
+              await window.electronAPI.pty.resize(projectDir, term.cols, term.rows)
+              log(`${phase} fit+resize`, { cols: term.cols, rows: term.rows, retries: i })
+              return true
+            }
+          } catch {
+            // ignore
+          }
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        }
+        log(`${phase} fit+resize skipped (invalid grid)`, { cols: term.cols, rows: term.rows })
+        return false
+      }
+
+      await syncSize('first')
       if (!isActive()) return
 
       // booting → starting：尺寸已同步，开始启动 PTY
@@ -217,6 +249,8 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         }
 
         if (!isActive()) return
+        await syncSize('pre-live')
+        if (!isActive()) return
         // starting → live：PTY 就绪，可正常收发
         state = 'live'
         log('live — flushing buffer', { hasRunning, newSession })
@@ -224,11 +258,13 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
           term.write('\r\n\x1b[33m[提示] 启动阶段输出较多，已截断最早部分内容。\x1b[0m\r\n')
         }
         flushPreReadyBuffer(term)
+        term.focus()
       }).catch((err: unknown) => {
         if (!isActive()) return
         appendPreReadyBuffer(`\r\n\x1b[31m启动失败：${String(err)}\x1b[0m\r\n`)
         state = 'live'
         flushPreReadyBuffer(term)
+        term.focus()
       })
     }
 
@@ -254,6 +290,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       }
       unsubData()
       unsubExit()
+      container.removeEventListener('pointerdown', focusTerminal)
       resizeObserver.disconnect()
       // 注意：不 kill PTY，保持 session 在后台运行
       term.dispose()

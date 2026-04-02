@@ -96,6 +96,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('plugins:set-enabled', pluginKey, enabled),
     getAuthStatus: () => ipcRenderer.invoke('plugins:get-auth-status'),
   },
+  debug: {
+    timing: (scope: string, label: string, detail?: Record<string, unknown>) =>
+      ipcRenderer.send('debug:timing', { scope, label, detail }),
+  },
   snapshot: {
     list: (projectDir: string) => ipcRenderer.invoke('snapshot:list', projectDir),
     save: (projectDir: string, name: string, description: string) =>

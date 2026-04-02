@@ -6,3 +6,10 @@ export interface SessionSnapshot {
 }
 
 export type SnapshotStore = Record<string, SessionSnapshot[]>
+
+export type CurrentSessionSource = 'active' | 'scan' | 'none' | 'error'
+
+export interface CurrentSessionInfo {
+  id: string | null
+  source: CurrentSessionSource
+}

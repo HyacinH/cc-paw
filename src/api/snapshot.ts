@@ -1,4 +1,4 @@
-import type { SessionSnapshot } from '../types/snapshot.types'
+import type { SessionSnapshot, CurrentSessionInfo } from '../types/snapshot.types'
 
 export async function listSnapshots(projectDir: string): Promise<SessionSnapshot[]> {
   const result = await window.electronAPI.snapshot.list(projectDir)
@@ -21,10 +21,15 @@ export async function deleteSnapshot(projectDir: string, snapshotId: string): Pr
   if (!result.success) throw new Error(result.error)
 }
 
-export async function getCurrentSessionId(projectDir: string): Promise<string | null> {
+export async function getCurrentSession(projectDir: string): Promise<CurrentSessionInfo> {
   const result = await window.electronAPI.snapshot.currentId(projectDir)
-  if (!result.success) return null
+  if (!result.success) return { id: null, source: 'error' }
   return result.data
+}
+
+export async function getCurrentSessionId(projectDir: string): Promise<string | null> {
+  const current = await getCurrentSession(projectDir)
+  return current.id
 }
 
 export async function summarizeSession(projectDir: string): Promise<string> {

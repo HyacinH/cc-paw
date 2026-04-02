@@ -1,8 +1,9 @@
 import { ipcMain, BrowserWindow, Notification } from 'electron'
 import path from 'path'
 import * as pty from 'node-pty'
-import { hasPreviousSession, markSessionExists, clearPtySession } from '../services/session.service'
+import { markSessionExists, clearPtySession } from '../services/session.service'
 import { getShellEnv, findClaude, isWin } from '../services/platform'
+import { setActiveSessionId, clearActiveSessionId, getCurrentSession } from '../services/snapshot.service'
 import { getNotifyOnDone } from './app-settings.handler'
 
 const BUFFER_MAX = 200 * 1024 // 200KB per session
@@ -10,7 +11,8 @@ const DONE_TIMEOUT_MS = 10_000  // 10s of silence → Claude finished responding
 const PATTERN_WINDOW = 500      // chars of recent stripped output for cross-chunk pattern matching
 
 function ptyLog(event: string, projectDir: string, extra?: Record<string, unknown>): void {
-  console.debug(`[pty] ${event}`, { dir: path.basename(projectDir), ...extra })
+  const uptimeMs = Math.round(process.uptime() * 1000)
+  console.log(`[pty +${uptimeMs}ms] ${event}`, { dir: path.basename(projectDir), ...extra })
 }
 
 // Strip ANSI/VT escape codes from terminal output
@@ -47,6 +49,7 @@ interface PtySession {
   buffer: string
   state: PtySessionState
   hasHadOutput: boolean      // don't glow until the session actually produces output
+  interactionArmed: boolean  // arm one interaction cycle after user input
   doneTimer: ReturnType<typeof setTimeout> | null       // silence → 'done'
   doneNotifyTimer: ReturnType<typeof setTimeout> | null // 2s after 'done' → send notification
   hadWaitingInput: boolean   // waiting-input fired this cycle; suppress done notification
@@ -104,6 +107,7 @@ function scheduleDone(
     session.doneTimer = null
     if (sessions.get(projectDir) !== session || session.state !== 'running') return
     session.state = 'done'
+    session.interactionArmed = false
     broadcastState(getMainWindow, projectDir, 'done')
     // Wait 2s before notifying — if waiting-input or new output arrives, cancel
     if (session.doneNotifyTimer !== null) clearTimeout(session.doneNotifyTimer)
@@ -135,6 +139,7 @@ function enterWaitingState(
   cancelDoneNotify(session)  // waiting-input takes priority over done notification
   if (session.state !== 'waiting-input') {
     session.state = 'waiting-input'
+    session.interactionArmed = false
     session.hadWaitingInput = true  // mark: done notification should be suppressed this cycle
     broadcastState(getMainWindow, projectDir, 'waiting-input')
     maybeNotify(projectDir, getMainWindow)
@@ -175,23 +180,50 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       sessions.delete(projectDir)
       ptyLog('session:replaced', projectDir)
     }
+    // Reset runtime hint before deciding/starting next flow.
+    // For --resume we'll set it again only after spawn succeeds.
+    clearActiveSessionId(projectDir)
 
     const fullEnv = getShellEnv()
     const claudeBin = findClaude()
 
     let claudeArgs: string[]
+    let launchResumeId: string | undefined
+    let idSource: 'explicit' | 'active' | 'scan' | 'none' | 'error' = 'none'
+    const sessionIntent: 'new' | 'restore' | 'auto' = resumeId ? 'restore' : (newSession ? 'new' : 'auto')
     if (resumeId) {
+      launchResumeId = resumeId
+      idSource = 'explicit'
       claudeArgs = ['--resume', resumeId]
+    } else if (!newSession) {
+      const current = await getCurrentSession(projectDir)
+      const detectedResumeId = current.id
+      idSource = current.source
+      if (detectedResumeId) {
+        launchResumeId = detectedResumeId
+        claudeArgs = ['--resume', detectedResumeId]
+      } else {
+        // No resumable session discovered; avoid stale --continue attempts.
+        await clearPtySession(projectDir)
+        claudeArgs = []
+        ptyLog('session:stale-marker-cleared', projectDir, { sessionIntent, idSource })
+      }
     } else {
-      const shouldContinue = !newSession && await hasPreviousSession(projectDir)
-      claudeArgs = shouldContinue ? ['--continue'] : []
+      idSource = 'none'
+      claudeArgs = []
+    }
+
+    // For non-resume flows we don't have a concrete session UUID yet.
+    // Fall back to file-based detection until one is known.
+    if (!launchResumeId) {
+      clearActiveSessionId(projectDir)
     }
 
     const [spawnFile, spawnArgs] = isWin
       ? ['cmd.exe', ['/c', claudeBin, ...claudeArgs]]
       : [claudeBin, claudeArgs]
 
-    ptyLog('session:spawning', projectDir, { spawnFile, claudeArgs, newSession, resumeId })
+    ptyLog('session:spawning', projectDir, { spawnFile, claudeArgs, newSession, resumeId, sessionIntent, idSource, launchResumeId })
 
     try {
       const proc = pty.spawn(spawnFile, spawnArgs, {
@@ -200,15 +232,44 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
         rows: 24,
         cwd: projectDir,
         env: fullEnv as Record<string, string>,
+        ...(isWin ? { useConpty: false } : {}),
       })
 
-      // Don't broadcast 'running' immediately — wait for actual output so the
-      // avatar only glows once the session is doing something.
-      const session: PtySession = { proc, buffer: '', state: 'running', hasHadOutput: false, doneTimer: null, doneNotifyTimer: null, hadWaitingInput: false, patternWindow: '' }
+      // Status cycle (running/done) is armed by user input, not by startup banner output.
+      const session: PtySession = {
+        proc,
+        buffer: '',
+        state: 'running',
+        hasHadOutput: false,
+        interactionArmed: false,
+        doneTimer: null,
+        doneNotifyTimer: null,
+        hadWaitingInput: false,
+        patternWindow: '',
+      }
       sessions.set(projectDir, session)
-      ptyLog('session:spawned', projectDir, { pid: proc.pid, cols: 80, rows: 24 })
+      if (launchResumeId) {
+        setActiveSessionId(projectDir, launchResumeId)
+      }
+      ptyLog('session:spawned', projectDir, {
+        pid: proc.pid,
+        cols: 80,
+        rows: 24,
+        sessionIntent,
+        idSource,
+        launchResumeId,
+      })
+
+      const spawnStartedAt = Date.now()
+      let firstOutputAt: number | null = null
+      let firstPrintableAt: number | null = null
+      let outputChunkCount = 0
 
       proc.onData((data) => {
+        outputChunkCount += 1
+        const stripped = stripAnsi(data)
+        const printable = stripped.replace(/\s+/g, '')
+
         // Append to rolling buffer
         session.buffer += data
         if (session.buffer.length > BUFFER_MAX) {
@@ -219,18 +280,36 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
           win.webContents.send('pty:data', { projectDir, data })
         }
 
-        // First real output: start glowing
+        // First real output chunk
         if (!session.hasHadOutput) {
           session.hasHadOutput = true
-          ptyLog('session:first-output', projectDir, { bytes: data.length })
-          broadcastState(getMainWindow, projectDir, 'running')
-          scheduleDone(session, projectDir, getMainWindow)
+          firstOutputAt = Date.now()
+          ptyLog('session:first-output', projectDir, {
+            bytes: data.length,
+            strippedBytes: stripped.length,
+            printableBytes: printable.length,
+            chunkIndex: outputChunkCount,
+            elapsedMs: firstOutputAt - spawnStartedAt,
+          })
+        }
+
+        // First printable output (ignore pure cursor/show-hide/noise chunks)
+        if (firstPrintableAt === null && printable.length > 0) {
+          firstPrintableAt = Date.now()
+          ptyLog('session:first-printable-output', projectDir, {
+            bytes: data.length,
+            strippedBytes: stripped.length,
+            printableBytes: printable.length,
+            chunkIndex: outputChunkCount,
+            elapsedMs: firstPrintableAt - spawnStartedAt,
+            preview: stripped.slice(0, 120),
+          })
         }
 
         // Accumulate stripped output in a small window for cross-chunk pattern matching.
         // Some prompts (e.g. inquirer selection menus) arrive across multiple PTY chunks
         // so checking only the current chunk would miss the full phrase.
-        session.patternWindow += stripAnsi(data)
+        session.patternWindow += stripped
         if (session.patternWindow.length > PATTERN_WINDOW) {
           session.patternWindow = session.patternWindow.slice(-PATTERN_WINDOW)
         }
@@ -239,20 +318,42 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
         // Once in 'waiting-input', stay there until the user actually sends input
         // (handled in pty:write). Otherwise subsequent ANSI/redraw chunks would
         // bounce the state back to 'running' and re-trigger the notification.
-        if (detectsWaiting(session.patternWindow)) {
+        if (session.interactionArmed && detectsWaiting(session.patternWindow)) {
           enterWaitingState(session, projectDir, getMainWindow)
-        } else if (session.state !== 'waiting-input') {
+        } else if (session.state !== 'waiting-input' && session.interactionArmed) {
           setRunning(session, projectDir, getMainWindow)
         }
       })
 
       proc.onExit(({ exitCode }) => {
+        const lifetimeMs = Date.now() - spawnStartedAt
+        const timeToFirstOutputMs = firstOutputAt === null ? null : firstOutputAt - spawnStartedAt
+        const timeToFirstPrintableOutputMs = firstPrintableAt === null ? null : firstPrintableAt - spawnStartedAt
+        const hadOutput = firstOutputAt !== null
         const s = sessions.get(projectDir)
+        const bufferBytes = s?.buffer.length ?? 0
+        const strippedTail = (s?.buffer ?? '').replace(ANSI_RE, '').slice(-240)
         if (s?.proc === proc) {
           if (s.doneTimer !== null) clearTimeout(s.doneTimer)
           sessions.delete(projectDir)
         }
-        ptyLog('session:exit', projectDir, { exitCode })
+        clearActiveSessionId(projectDir)
+        ptyLog('session:exit', projectDir, {
+          exitCode,
+          newSession,
+          resumeId,
+          sessionIntent,
+          idSource,
+          launchResumeId,
+          claudeArgs,
+          lifetimeMs,
+          hadOutput,
+          timeToFirstOutputMs,
+          timeToFirstPrintableOutputMs,
+          outputChunkCount,
+          bufferBytes,
+          strippedTail,
+        })
         const win = getMainWindow()
         if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
           win.webContents.send('pty:exit', { projectDir, code: exitCode })
@@ -274,6 +375,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
   ipcMain.handle('pty:write', (_event, projectDir: string, data: string) => {
     const session = sessions.get(projectDir)
     if (session) {
+      session.interactionArmed = true
       session.proc.write(data)
       // User responded — exit waiting-input state and start a new interaction cycle
       if (session.state === 'waiting-input') {
@@ -302,6 +404,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       sessions.delete(projectDir)
       ptyLog('session:killed', projectDir)
     }
+    clearActiveSessionId(projectDir)
     return { success: true, data: undefined }
   })
 

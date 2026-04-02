@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Trash2, RotateCcw, AlertCircle, BookOpen, Eye, Pencil, Plus, X } from 'lucide-react'
+import { Trash2, RotateCcw, AlertCircle, BookOpen, Eye, Pencil, Plus, X, Save } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import Editor from '@monaco-editor/react'
@@ -11,7 +11,7 @@ import { listDocs, readDoc, writeDoc, generateDocsIndex } from '../api/docs'
 import type { DocFile } from '../types/docs.types'
 import { TerminalPanel } from '../components/terminal/TerminalPanel'
 import type { SessionSnapshot } from '../types/snapshot.types'
-import { listSnapshots, saveSnapshot, deleteSnapshot, getCurrentSessionId } from '../api/snapshot'
+import { listSnapshots, saveSnapshot, deleteSnapshot, getCurrentSessionId, getCurrentSession } from '../api/snapshot'
 import { SessionActionModal } from '../components/session/SessionActionModal'
 import { SnapshotDropdown } from '../components/session/SnapshotDropdown'
 
@@ -425,6 +425,18 @@ export default function ProjectPage() {
   // Keep ref in sync so handleModalConfirm can read the latest value without being in deps
   useEffect(() => { currentSessionIdRef.current = currentSessionId }, [currentSessionId])
 
+  // Route param changes reuse the same component instance, so reset per-project
+  // session-control state to avoid carrying "new/restore" intent across projects.
+  useEffect(() => {
+    setSessionKey(0)
+    setResumeId(undefined)
+    setModal(null)
+    setShowDropdown(false)
+    setSnapshots([])
+    setCurrentSessionId(null)
+    currentSessionIdRef.current = null
+  }, [projectDir])
+
   useEffect(() => { loadSettings() }, [loadSettings])
 
   const loadSnapshots = useCallback(async () => {
@@ -441,41 +453,103 @@ export default function ProjectPage() {
     loadSnapshots()
   }, [loadSnapshots])
 
+  // On first open of a project, current session JSONL may appear a bit later.
+  // Poll briefly so the header snapshot label updates as soon as session id is available.
+  useEffect(() => {
+    if (!projectDir || currentSessionId) return
+
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let attempts = 0
+
+    const poll = async () => {
+      if (cancelled) return
+      if (attempts++ >= 12) return
+
+      const id = await getCurrentSessionId(projectDir).catch(() => null)
+      if (cancelled) return
+
+      if (id) {
+        setCurrentSessionId(id)
+        await loadSnapshots()
+        return
+      }
+
+      timer = setTimeout(poll, 600)
+    }
+
+    timer = setTimeout(poll, 300)
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [projectDir, currentSessionId, loadSnapshots])
+
   // Shared logic: optionally save snapshot, kill session, start new or resume
   const handleModalConfirm = useCallback(
     async (
       saveData: { name: string; description: string } | null,
       nextResumeId?: string
     ) => {
+      const t0 = performance.now()
+      const log = (msg: string, extra?: Record<string, unknown>) => {
+        const elapsedMs = Math.round(performance.now() - t0)
+        const detail = {
+          projectDir: projectDir.split(/[\\/]/).pop(),
+          ...extra,
+        }
+        console.log(`[ProjectPage +${elapsedMs}ms] ${msg}`, detail)
+        window.electronAPI.debug.timing('ProjectPage', `+${elapsedMs}ms ${msg}`, detail)
+      }
+
       if (!projectDir) return
+      log('modal confirm begin', { hasSaveData: !!saveData, nextResumeId })
       if (saveData) {
         await saveSnapshot(projectDir, saveData.name, saveData.description)
+        log('saveSnapshot done')
         await loadSnapshots()
+        log('loadSnapshots after save done')
       }
       await window.electronAPI.pty.kill(projectDir)
+      log('pty.kill done')
       if (nextResumeId) {
         // Restore: session ID is known immediately
         setCurrentSessionId(nextResumeId)
+        log('restore setCurrentSessionId')
       } else {
-        // New session: clear stale name right away, then poll until Claude Code
-        // creates the new JSONL (a different ID from the previous one)
+        // New session: clear stale name right away, then poll for any available current ID.
+        // Requiring id !== prevId can stall for seconds when Claude keeps writing into
+        // the same JSONL file on startup.
         await window.electronAPI.pty.clearSession(projectDir)
+        log('pty.clearSession done')
         const prevId = currentSessionIdRef.current
         setCurrentSessionId(null)
         let attempts = 0
         const poll = async () => {
-          if (attempts++ >= 10) return
+          if (attempts++ >= 6) {
+            log('new-session id poll timeout', { attempts })
+            return
+          }
           try {
-            const id = await getCurrentSessionId(projectDir)
-            if (id && id !== prevId) { setCurrentSessionId(id); return }
-          } catch { /* ignore */ }
-          setTimeout(poll, 800)
+      const current = await getCurrentSession(projectDir)
+      log('new-session id poll tick', { attempts, id: current.id, source: current.source, prevId })
+      if (current.id && current.id !== prevId) {
+        setCurrentSessionId(current.id)
+        log('new-session id updated', { id: current.id, source: current.source, changed: true })
+        return
+      }
+          } catch {
+            log('new-session id poll error', { attempts })
+          }
+          setTimeout(poll, 500)
         }
-        setTimeout(poll, 1000)
+        setTimeout(poll, 300)
       }
       setResumeId(nextResumeId)
       setSessionKey((k) => k + 1)
       setModal(null)
+      log('modal confirm end')
     },
     [projectDir, loadSnapshots]
   )

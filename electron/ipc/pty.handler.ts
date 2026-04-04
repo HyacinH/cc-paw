@@ -9,6 +9,7 @@ import { getNotifyOnDone } from './app-settings.handler'
 const BUFFER_MAX = 200 * 1024 // 200KB per session
 const DONE_TIMEOUT_MS = 10_000  // 10s of silence → Claude finished responding
 const PATTERN_WINDOW = 500      // chars of recent stripped output for cross-chunk pattern matching
+const ACTIVE_WINDOW_MS = 5_000 // suppress notifications briefly after terminal input in this project
 
 function ptyLog(event: string, projectDir: string, extra?: Record<string, unknown>): void {
   const uptimeMs = Math.round(process.uptime() * 1000)
@@ -78,6 +79,17 @@ interface PtySession {
 }
 
 const sessions = new Map<string, PtySession>()
+const lastInteractionAtByProject = new Map<string, number>()
+
+function hasRecentInteraction(projectDir: string): boolean {
+  const last = lastInteractionAtByProject.get(projectDir)
+  return last !== undefined && (Date.now() - last) < ACTIVE_WINDOW_MS
+}
+
+function getInteractionAgeMs(projectDir: string): number | null {
+  const last = lastInteractionAtByProject.get(projectDir)
+  return last === undefined ? null : (Date.now() - last)
+}
 
 function broadcastState(
   getMainWindow: () => BrowserWindow | null,
@@ -91,11 +103,24 @@ function broadcastState(
 }
 
 function sendNotification(
+  projectDir: string,
   title: string,
   body: string,
   getMainWindow: () => BrowserWindow | null,
 ): void {
-  if (BrowserWindow.getFocusedWindow() !== null) return
+  if (BrowserWindow.getFocusedWindow() !== null) {
+    ptyLog('notify:skipped-window-focused', projectDir, { title })
+    return
+  }
+  const interactionAgeMs = getInteractionAgeMs(projectDir)
+  if (interactionAgeMs !== null && interactionAgeMs < ACTIVE_WINDOW_MS) {
+    ptyLog('notify:skipped-recent-input', projectDir, {
+      title,
+      interactionAgeMs,
+      activeWindowMs: ACTIVE_WINDOW_MS,
+    })
+    return
+  }
   const notification = new Notification({ title, body })
   notification.on('click', () => {
     const win = getMainWindow()
@@ -106,16 +131,17 @@ function sendNotification(
     }
   })
   notification.show()
+  ptyLog('notify:sent', projectDir, { title })
 }
 
 function maybeNotify(projectDir: string, getMainWindow: () => BrowserWindow | null): void {
   const projectName = path.basename(projectDir)
-  sendNotification(`${projectName} — Action Required`, 'Claude is waiting for your input. Click to respond.', getMainWindow)
+  sendNotification(projectDir, `${projectName} — Action Required`, 'Claude is waiting for your input. Click to respond.', getMainWindow)
 }
 
 function maybeNotifyDone(projectDir: string, getMainWindow: () => BrowserWindow | null): void {
   const projectName = path.basename(projectDir)
-  sendNotification(`${projectName} — Done`, 'Claude has finished responding.', getMainWindow)
+  sendNotification(projectDir, `${projectName} — Done`, 'Claude has finished responding.', getMainWindow)
 }
 
 function scheduleDone(
@@ -358,6 +384,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
           if (s.doneTimer !== null) clearTimeout(s.doneTimer)
           sessions.delete(projectDir)
         }
+        lastInteractionAtByProject.delete(projectDir)
         clearActiveSessionId(projectDir)
         ptyLog('session:exit', projectDir, {
           exitCode,
@@ -398,6 +425,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
     const session = sessions.get(projectDir)
     if (session) {
       session.interactionArmed = true
+      lastInteractionAtByProject.set(projectDir, Date.now())
       session.proc.write(data)
       // Prompt text may already be on screen before the user types, and no new
       // output chunk may arrive immediately. Detect waiting state right away so
@@ -434,6 +462,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       ptyLog('session:killed', projectDir)
     }
     clearActiveSessionId(projectDir)
+    lastInteractionAtByProject.delete(projectDir)
     return { success: true, data: undefined }
   })
 

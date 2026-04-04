@@ -5,7 +5,7 @@ import { useAppSettingsStore } from '../store/appSettings.store'
 export default function SettingsPage() {
   const { notifyOnDone, load: loadApp, save: saveApp } = useAppSettingsStore()
 
-  const [apiKeyHelper, setApiKeyHelper] = useState('')
+  const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [sonnetModel, setSonnetModel] = useState('')
   const [opusModel, setOpusModel] = useState('')
@@ -19,7 +19,7 @@ export default function SettingsPage() {
     loadApp()
     window.electronAPI.claudeSettings.read().then((r) => {
       if (r.success && r.data) {
-        setApiKeyHelper(r.data.apiKeyHelper)
+        setApiKey(r.data.apiKey)
         setBaseUrl(r.data.baseUrl)
         setSonnetModel(r.data.defaultSonnetModel)
         setOpusModel(r.data.defaultOpusModel)
@@ -32,7 +32,7 @@ export default function SettingsPage() {
     setSaving(true); setError(null)
     try {
       const result = await window.electronAPI.claudeSettings.write({
-        apiKeyHelper: apiKeyHelper.trim(),
+        apiKey: apiKey.trim(),
         baseUrl: baseUrl.trim(),
         defaultSonnetModel: sonnetModel.trim(),
         defaultOpusModel: opusModel.trim(),
@@ -61,22 +61,22 @@ export default function SettingsPage() {
 
         <div>
           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-            apiKeyHelper
-            <span className="ml-2 text-gray-400 dark:text-gray-600 font-normal">— 获取 API Key 的 shell 命令</span>
+            API Key
+            <span className="ml-2 text-gray-400 dark:text-gray-600 font-normal">— Anthropic API 密钥</span>
           </label>
           <div className="flex items-center gap-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3">
             <input
               type={showHelper ? 'text' : 'password'}
-              value={apiKeyHelper}
-              onChange={(e) => setApiKeyHelper(e.target.value)}
-              placeholder="echo 'sk-...'"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-ant-..."
               className="flex-1 text-sm bg-transparent py-2.5 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none font-mono"
             />
             <button onClick={() => setShowHelper((v) => !v)} className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-1 shrink-0">
               {showHelper ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-600">命令的 stdout 将作为 API Key 使用，例如 <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">echo 'sk-...'</code></p>
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-600">仅在点击保存时写入 ~/.claude/settings.json 的 <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">env.ANTHROPIC_API_KEY</code></p>
         </div>
 
         <div>

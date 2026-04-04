@@ -84,6 +84,10 @@ export interface ClaudeCodeSettingsView {
 
 interface ElectronAPI {
   platform: string
+  windowsPty?: {
+    backend: 'conpty' | 'winpty'
+    buildNumber?: number
+  }
   claudeMd: {
     readGlobal: () => Promise<IPCResult<string | null>>
     writeGlobal: (content: string) => Promise<IPCResult<void>>

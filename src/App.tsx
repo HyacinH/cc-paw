@@ -18,6 +18,7 @@ export default function App() {
   const [showSetup, setShowSetup] = useState(false)
   const { theme } = useThemeStore()
   const { setProjectState } = usePtyStore()
+  const electronAPI = window.electronAPI
 
   // Apply dark/light class to <html>
   useEffect(() => {
@@ -30,17 +31,29 @@ export default function App() {
   }, [theme])
 
   useEffect(() => {
-    window.electronAPI.shell.run('claude --version').then((r) => {
+    if (!electronAPI) return
+    electronAPI.shell.run('claude --version').then((r) => {
       if (!r.success) setShowSetup(true)
     })
-  }, [])
+  }, [electronAPI])
 
   // Global PTY state listener — drives sidebar glow indicators
   useEffect(() => {
-    return window.electronAPI.pty.onPtyState((projectDir, state) => {
+    if (!electronAPI) return
+    return electronAPI.pty.onPtyState((projectDir, state) => {
       setProjectState(projectDir, state)
     })
-  }, [setProjectState])
+  }, [electronAPI, setProjectState])
+
+  if (!electronAPI) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#faf6ef] text-[#2d2218] dark:bg-gray-950 dark:text-gray-100">
+        <div className="max-w-xl rounded-lg border border-red-300 bg-red-50 p-4 text-sm">
+          Preload 初始化失败：`window.electronAPI` 不可用，请重启开发进程后重试。
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>

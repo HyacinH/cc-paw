@@ -249,14 +249,6 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       if (!isActive() || evtProjectDir !== projectDir) return
       ptyUiState = nextState
       log('pty ui state update', { ptyUiState })
-      if (isWin && nextState === 'waiting-input') {
-        try {
-          term.write('\x1b[?25h')
-          log('cursor restore in waiting-input state', { ptyUiState, x: term.buffer.active.cursorX, y: term.buffer.active.cursorY })
-        } catch {
-          // ignore
-        }
-      }
     })
     log('listeners attached')
     const focusTerminal = () => {

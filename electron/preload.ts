@@ -4,8 +4,18 @@ import type { AppSettings } from './ipc/app-settings.handler'
 import type { ClaudeCodeSettingsView } from './ipc/claude-settings.handler'
 import type { SessionSnapshot } from '../src/types/snapshot.types'
 
+const isWin = process.platform === 'win32'
+const windowsPty = isWin
+  ? {
+      // Avoid Node 'os' dependency in preload so injection stays stable.
+      // Keep xterm backend hint aligned with node-pty(useConpty: true).
+      backend: 'conpty' as const,
+    }
+  : undefined
+
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
+  windowsPty,
   claudeMd: {
     readGlobal: () => ipcRenderer.invoke('claude-md:read-global'),
     writeGlobal: (content: string) => ipcRenderer.invoke('claude-md:write-global', content),

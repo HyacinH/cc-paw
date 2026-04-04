@@ -1,32 +1,101 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   release:
     types:
-      - created
+      - published
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional tag to build (e.g. v0.11.5 or 0.11.5). Leave empty to auto-use package.json version.'
+        required: false
+        type: string
+      ref:
+        description: 'Git ref to tag/build from when manually triggered (default: main)'
+        required: false
+        default: 'main'
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   create-release:
-    name: Create Release
+    name: Create/Resolve Release
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
     steps:
-      - name: Create draft release from pushed tag
-        if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
+      - uses: actions/checkout@v4
         with:
-          generate_release_notes: true
-          draft: true
+          fetch-depth: 0
 
-      - name: Use existing release created from GitHub UI
+      - name: Resolve tag and ref
+        id: resolve
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+            REF="${{ github.event.release.target_commitish }}"
+            [ -z "$REF" ] && REF="main"
+          else
+            REF="${{ inputs.ref }}"
+            [ -z "$REF" ] && REF="main"
+
+            RAW_TAG="${{ inputs.tag }}"
+            if [ -n "$RAW_TAG" ]; then
+              case "$RAW_TAG" in
+                v*) TAG="$RAW_TAG" ;;
+                *) TAG="v$RAW_TAG" ;;
+              esac
+            else
+              VERSION=$(node -p "require('./package.json').version")
+              TAG="v$VERSION"
+            fi
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG"
+          echo "Resolved ref: $REF"
+
+      - name: Ensure tag exists (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ steps.resolve.outputs.tag }}"
+          REF="${{ steps.resolve.outputs.ref }}"
+
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists"
+          else
+            git fetch origin "$REF" --depth=1
+            git tag "$TAG" "origin/$REF"
+            git push origin "$TAG"
+            echo "Created and pushed tag $TAG from origin/$REF"
+          fi
+
+      - name: Ensure draft release exists (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ steps.resolve.outputs.tag }}"
+          REF="${{ steps.resolve.outputs.ref }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+          else
+            gh release create "$TAG" --draft --generate-notes --title "$TAG" --target "$REF"
+            echo "Created draft release for $TAG"
+          fi
+
+      - name: Use published release context
         if: github.event_name == 'release'
-        run: echo "Using existing release for tag ${{ github.ref_name }}"
+        run: echo "Using published release for tag ${{ steps.resolve.outputs.tag }}"
 
   build-mac:
     name: Build macOS
@@ -34,6 +103,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -49,10 +120,12 @@ jobs:
 
   build-win:
     name: Build Windows
-    runs-on: windows-latest
     needs: create-release
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.tag }}
 
       - uses: actions/setup-node@v4
         with:

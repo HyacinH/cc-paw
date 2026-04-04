@@ -34,12 +34,33 @@ const WAITING_PATTERNS = [
   /press\s+enter/i,           // "Press Enter to continue"
   /do you want to proceed/i,  // Claude Code permission dialog (no \? — more forgiving)
   /do you want to allow/i,    // Claude Code tool-use permission
+  /what should claude do instead\?/i, // fallback/action correction prompt
   /❯\s*\d+\./,                // "❯ N." — inquirer numbered selection cursor
 ]
 
+function detectPromptLineWaiting(strippedText: string): boolean {
+  const normalized = strippedText.replace(/\r/g, '')
+  const lines = normalized.split('\n')
+  const tailLines = lines.slice(-6)
+  if (tailLines.length === 0) return false
+  const lastLine = tailLines[tailLines.length - 1] ?? ''
+  // Claude input prompt line, e.g. "> " (possibly with indentation).
+  // Keep this strict to avoid false positives from markdown quote content.
+  return /^\s*>\s*$/.test(lastLine)
+}
+
+function detectTypedPromptLineFromBuffer(rawBuffer: string): boolean {
+  const stripped = stripAnsi(rawBuffer).replace(/\r/g, '')
+  const lines = stripped.split('\n')
+  if (lines.length === 0) return false
+  const lastLine = (lines[lines.length - 1] ?? '').trimStart()
+  // Input line can be "> " or "> user typed text".
+  return /^>($|\s+.*)/.test(lastLine)
+}
+
 // patternWindow is pre-stripped; no need to stripAnsi again here
 function detectsWaiting(strippedText: string): boolean {
-  return WAITING_PATTERNS.some(p => p.test(strippedText))
+  return WAITING_PATTERNS.some(p => p.test(strippedText)) || detectPromptLineWaiting(strippedText)
 }
 
 export type PtySessionState = 'running' | 'waiting-input' | 'done'
@@ -232,7 +253,7 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
         rows: 24,
         cwd: projectDir,
         env: fullEnv as Record<string, string>,
-        ...(isWin ? { useConpty: false } : {}),
+        ...(isWin ? { useConpty: true } : {}),
       })
 
       // Status cycle (running/done) is armed by user input, not by startup banner output.
@@ -364,7 +385,8 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
       await markSessionExists(projectDir)
       return { success: true, data: undefined }
     } catch (err) {
-      const msg = (err as NodeJS.ErrnoError).code === 'ENOENT'
+      const errorWithCode = err as { code?: string }
+      const msg = errorWithCode.code === 'ENOENT'
         ? '未找到 claude 命令，请确认已安装 Claude Code CLI'
         : String(err)
       ptyLog('session:spawn-error', projectDir, { msg })
@@ -377,6 +399,13 @@ export function registerPtyHandlers(getMainWindow: () => BrowserWindow | null): 
     if (session) {
       session.interactionArmed = true
       session.proc.write(data)
+      // Prompt text may already be on screen before the user types, and no new
+      // output chunk may arrive immediately. Detect waiting state right away so
+      // renderer-side cursor recovery can trigger in time.
+      if (detectsWaiting(session.patternWindow) || detectTypedPromptLineFromBuffer(session.buffer)) {
+        enterWaitingState(session, projectDir, getMainWindow)
+        return { success: true, data: undefined }
+      }
       // User responded — exit waiting-input state and start a new interaction cycle
       if (session.state === 'waiting-input') {
         session.hadWaitingInput = false  // new cycle: done notification allowed again

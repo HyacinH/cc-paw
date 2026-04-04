@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -36,6 +36,10 @@ const LIGHT_THEME = {
 
 const PRE_READY_BUFFER_MAX = 1024 * 1024 // 1MB
 const PRE_READY_FLUSH_CHUNK_SIZE = 8 * 1024 // 8KB
+const RESYNC_DEBOUNCE_MS = 50
+const RESYNC_COOLDOWN_MS = 500
+
+type ResyncKind = 'hard' | 'soft'
 
 function getPrintableBytes(data: string): number {
   const stripped = data.replace(/\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07]*(?:\x07|\x1b\\)|[^[\]])/g, '')
@@ -47,6 +51,8 @@ interface TerminalPanelProps {
   newSession: boolean
   resumeId?: string
 }
+
+type PtyUiState = 'running' | 'waiting-input' | 'done' | 'exited' | 'unknown'
 
 export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -70,12 +76,20 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
     let preReadyBuffer = ''
     let preReadyTruncated = false
     let pendingFitTimer: ReturnType<typeof setTimeout> | null = null
+    let pendingResyncTimer: ReturnType<typeof setTimeout> | null = null
+    let dprWatcherTimer: ReturnType<typeof setInterval> | null = null
+    let pendingResyncKind: ResyncKind | null = null
+    const pendingResyncReasons = new Set<string>()
+    let lastResyncAt = 0
+    let lastSyncedCols = -1
+    let lastSyncedRows = -1
     const pendingFocusTimers: ReturnType<typeof setTimeout>[] = []
     let firstUserInputLogged = false
     let firstPreLiveInputLogged = false
     let firstKeyEventLogged = false
     let firstPtyChunkLogged = false
     let firstPrintableChunkLogged = false
+    let ptyUiState: PtyUiState = 'unknown'
 
     const startTs = performance.now()
     const isActive = () => state !== 'disposed'
@@ -119,28 +133,39 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
     }
 
     const isWin = window.electronAPI.platform === 'win32'
+    const windowsPty = isWin ? window.electronAPI.windowsPty : undefined
 
     const term = new Terminal({
       theme: theme === 'dark' ? DARK_THEME : LIGHT_THEME,
       // On Windows, prefer fonts with robust CJK/emoji metrics to reduce cursor drift.
       // 'Cascadia Code' and 'Consolas' render more reliably in packaged Electron on Windows.
       fontFamily: isWin
-        ? '"Cascadia Code", "Consolas", "JetBrains Mono", "Fira Code", monospace'
+        ? '"Cascadia Mono", "Consolas", "Lucida Console", "JetBrains Mono", monospace'
         : '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Monaco, monospace',
       fontSize: 13,
       // Windows: conservative lineHeight reduces cursor-drift amplification from DPI scaling.
       lineHeight: isWin ? 1.2 : 1.5,
-      cursorBlink: true,
+      // Work around canvas glyph overlap artifacts on some Windows font/DPI combinations.
+      rescaleOverlappingGlyphs: isWin,
+      // Windows: use a stable, visible caret style to avoid block-cursor paint loss.
+      cursorBlink: isWin ? false : true,
+      cursorStyle: isWin ? 'bar' : 'block',
       scrollback: 5000,
       allowProposedApi: true,
-      windowsMode: isWin,
+      windowsPty,
     })
 
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.open(container)
     term.focus()
-    log('mount', { projectDir, newSession, isWin, lineHeight: isWin ? 1.2 : 1.5 })
+    log('mount', {
+      projectDir,
+      newSession,
+      isWin,
+      lineHeight: isWin ? 1.2 : 1.5,
+      windowsPty,
+    })
 
     termRef.current = term
     fitAddonRef.current = fitAddon
@@ -194,12 +219,16 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         log('first pty chunk rendered', {
           bytes: data.length,
           printableBytes,
+          mountToFirstChunkMs: Math.round(performance.now() - startTs),
           preview: stripped.slice(0, 120),
         })
       }
       if (!firstPrintableChunkLogged && printableBytes > 0) {
         firstPrintableChunkLogged = true
-        log('first printable pty chunk rendered', { printableBytes })
+        log('first printable pty chunk rendered', {
+          printableBytes,
+          mountToFirstPrintableMs: Math.round(performance.now() - startTs),
+        })
       }
       if (state !== 'live') {
         appendPreReadyBuffer(data)
@@ -215,6 +244,11 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         return
       }
       term.write('\r\n\x1b[2m[进程已退出]\x1b[0m\r\n')
+    })
+    const unsubPtyState = window.electronAPI.pty.onPtyState((evtProjectDir, nextState) => {
+      if (!isActive() || evtProjectDir !== projectDir) return
+      ptyUiState = nextState
+      log('pty ui state update', { ptyUiState })
     })
     log('listeners attached')
     const focusTerminal = () => {
@@ -243,6 +277,60 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       }
     }
     container.addEventListener('pointerdown', focusTerminal)
+
+    const runResync = (kind: ResyncKind, reason: string) => {
+      if (!isActive()) return
+      try {
+        fitAddon.fit()
+        const { cols, rows } = term
+        if (cols <= 0 || rows <= 0) return
+        const sizeChanged = cols !== lastSyncedCols || rows !== lastSyncedRows
+        if (kind === 'hard' && sizeChanged) {
+          window.electronAPI.pty.resize(projectDir, cols, rows).catch(() => {})
+          lastSyncedCols = cols
+          lastSyncedRows = rows
+        }
+        if (kind === 'soft' && sizeChanged) {
+          // Soft resync avoids direct pty.resize; if fit detects a real grid delta,
+          // escalate once to hard resync so frontend/backend sizes converge.
+          scheduleResync('hard', `escalated-from-soft:${reason}`)
+        }
+        if (
+          isWin
+          && kind === 'hard'
+          && (
+            reason.includes('dpr-change')
+            || reason.includes('live-enter')
+            || reason.includes('window-focus')
+            || reason.includes('visibility-visible')
+          )
+        ) {
+          term.refresh(0, Math.max(rows - 1, 0))
+        }
+        log('resync', { kind, reason, cols, rows, sizeChanged })
+        lastResyncAt = Date.now()
+      } catch {
+        // ignore
+      }
+    }
+
+    const scheduleResync = (kind: ResyncKind, reason: string) => {
+      if (!isActive()) return
+      pendingResyncKind = pendingResyncKind === 'hard' || kind === 'hard' ? 'hard' : 'soft'
+      pendingResyncReasons.add(reason)
+      if (pendingResyncTimer !== null) clearTimeout(pendingResyncTimer)
+      const now = Date.now()
+      const remainingCooldown = Math.max(0, RESYNC_COOLDOWN_MS - (now - lastResyncAt))
+      const waitMs = Math.max(RESYNC_DEBOUNCE_MS, remainingCooldown)
+      pendingResyncTimer = setTimeout(() => {
+        const nextKind = pendingResyncKind ?? 'soft'
+        const nextReason = Array.from(pendingResyncReasons).join(',')
+        pendingResyncKind = null
+        pendingResyncReasons.clear()
+        pendingResyncTimer = null
+        runResync(nextKind, nextReason)
+      }, waitMs)
+    }
 
     const ensureReadyThenStart = async () => {
       if (!isActive()) return
@@ -279,6 +367,8 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
             fitAddon.fit()
             if (term.cols > 0 && term.rows > 0) {
               await window.electronAPI.pty.resize(projectDir, term.cols, term.rows)
+              lastSyncedCols = term.cols
+              lastSyncedRows = term.rows
               log(`${phase} fit+resize`, { cols: term.cols, rows: term.rows, retries: i })
               return true
             }
@@ -304,7 +394,11 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         try {
           fitAddon.fit()
           const { cols, rows } = term
-          window.electronAPI.pty.resize(projectDir, cols, rows).catch(() => {})
+          if (cols > 0 && rows > 0 && (cols !== lastSyncedCols || rows !== lastSyncedRows)) {
+            window.electronAPI.pty.resize(projectDir, cols, rows).catch(() => {})
+            lastSyncedCols = cols
+            lastSyncedRows = rows
+          }
           log('second fit+resize', { cols, rows })
         } catch {
           // ignore
@@ -337,24 +431,29 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         }
 
         if (!isActive()) return
-        void syncSize('pre-live')
+        await syncSize('pre-live')
         if (!isActive()) return
         // starting → live：PTY 就绪，可正常收发
+        const mountToLiveMs = Math.round(performance.now() - startTs)
         state = 'live'
-        log('live — flushing buffer', { hasRunning, newSession })
+        log('live — flushing buffer', { hasRunning, newSession, mountToLiveMs })
         if (preReadyTruncated) {
           term.write('\r\n\x1b[33m[提示] 启动阶段输出较多，已截断最早部分内容。\x1b[0m\r\n')
         }
         flushPreReadyBuffer(term)
         term.focus()
         focusWithRetries()
+        scheduleResync('hard', 'live-enter')
       }).catch((err: unknown) => {
         if (!isActive()) return
         appendPreReadyBuffer(`\r\n\x1b[31m启动失败：${String(err)}\x1b[0m\r\n`)
+        const mountToLiveMs = Math.round(performance.now() - startTs)
         state = 'live'
+        log('live — fallback flushing buffer', { mountToLiveMs, error: String(err) })
         flushPreReadyBuffer(term)
         term.focus()
         focusWithRetries()
+        scheduleResync('hard', 'live-enter-fallback')
       })
     }
 
@@ -363,13 +462,34 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
     // 监听容器尺寸变化，自动 fit
     const resizeObserver = new ResizeObserver(() => {
       if (!isActive()) return
-      try {
-        fitAddon.fit()
-        const { cols, rows } = term
-        window.electronAPI.pty.resize(projectDir, cols, rows).catch(() => {})
-      } catch { /* ignore */ }
+      scheduleResync('hard', 'container-resize')
     })
     resizeObserver.observe(container)
+
+    const onWindowResize = () => scheduleResync('hard', 'window-resize')
+    const onWindowFocus = () => scheduleResync(isWin ? 'hard' : 'soft', 'window-focus')
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        scheduleResync(isWin ? 'hard' : 'soft', 'visibility-visible')
+      }
+    }
+    window.addEventListener('resize', onWindowResize)
+    window.addEventListener('focus', onWindowFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    // Browser/Electron does not emit a dedicated DPI-change event reliably on Windows.
+    // Polling DPR is cheap and catches monitor switches / scale changes.
+    if (isWin) {
+      let lastDpr = window.devicePixelRatio
+      dprWatcherTimer = setInterval(() => {
+        if (!isActive()) return
+        const dpr = window.devicePixelRatio
+        if (dpr !== lastDpr) {
+          lastDpr = dpr
+          scheduleResync('hard', 'dpr-change')
+        }
+      }, 1000)
+    }
 
     return () => {
       log('unmount — disposing')
@@ -378,14 +498,28 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         clearTimeout(pendingFitTimer)
         pendingFitTimer = null
       }
+      if (pendingResyncTimer !== null) {
+        clearTimeout(pendingResyncTimer)
+        pendingResyncTimer = null
+      }
+      pendingResyncKind = null
+      pendingResyncReasons.clear()
+      if (dprWatcherTimer !== null) {
+        clearInterval(dprWatcherTimer)
+        dprWatcherTimer = null
+      }
       for (const timer of pendingFocusTimers) {
         clearTimeout(timer)
       }
       pendingFocusTimers.length = 0
       unsubData()
       unsubExit()
+      unsubPtyState()
       container.removeEventListener('pointerdown', focusTerminal)
       resizeObserver.disconnect()
+      window.removeEventListener('resize', onWindowResize)
+      window.removeEventListener('focus', onWindowFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       // 注意：不 kill PTY，保持 session 在后台运行
       term.dispose()
       termRef.current = null

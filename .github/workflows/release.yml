@@ -1,32 +1,62 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   release:
     types:
-      - created
+      - published
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to build and upload (e.g. v0.11.5)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   create-release:
-    name: Create Release
+    name: Create/Resolve Release
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve-tag.outputs.tag }}
     steps:
-      - name: Create draft release from pushed tag
-        if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          draft: true
+      - name: Resolve tag
+        id: resolve-tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${{ github.event.release.tag_name }}"
+          fi
 
-      - name: Use existing release created from GitHub UI
+          if [ -z "$TAG" ]; then
+            echo "Tag is required" >&2
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG"
+
+      - name: Ensure draft release exists (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ steps.resolve-tag.outputs.tag }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+          else
+            gh release create "$TAG" --draft --generate-notes --title "$TAG"
+            echo "Created draft release for $TAG"
+          fi
+
+      - name: Use published release context
         if: github.event_name == 'release'
-        run: echo "Using existing release for tag ${{ github.ref_name }}"
+        run: echo "Using published release for tag ${{ steps.resolve-tag.outputs.tag }}"
 
   build-mac:
     name: Build macOS
@@ -34,6 +64,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -53,6 +85,8 @@ jobs:
     needs: create-release
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.create-release.outputs.tag }}
 
       - uses: actions/setup-node@v4
         with:

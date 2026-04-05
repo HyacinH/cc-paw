@@ -56,6 +56,8 @@ type PtyUiState = 'running' | 'waiting-input' | 'done' | 'exited' | 'unknown'
 
 export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const toastRef = useRef<HTMLDivElement | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const { theme } = useThemeStore()
@@ -169,6 +171,102 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
 
     termRef.current = term
     fitAddonRef.current = fitAddon
+
+    const isMac = window.electronAPI.platform === 'darwin'
+
+    const showCopiedToast = () => {
+      const el = toastRef.current
+      if (!el) return
+      el.textContent = '已复制'
+      el.classList.remove('opacity-0')
+      el.classList.add('opacity-100')
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = setTimeout(() => {
+        const current = toastRef.current
+        if (!current) return
+        current.classList.remove('opacity-100')
+        current.classList.add('opacity-0')
+      }, 900)
+    }
+
+    const copySelectionToClipboard = () => {
+      const selected = term.getSelection()
+      if (!selected) return
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(selected).then(() => {
+          showCopiedToast()
+        }).catch(() => {})
+      }
+    }
+
+    const pasteFromClipboard = () => {
+      if (!navigator.clipboard?.readText) return
+      navigator.clipboard.readText().then((text) => {
+        if (!text || !isActive() || state !== 'live') return
+        window.electronAPI.pty.write(projectDir, text).catch(() => {})
+      }).catch(() => {})
+    }
+
+    const isCopyShortcut = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase()
+      if (isMac) {
+        return event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && key === 'c'
+      }
+      return (
+        (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && key === 'c')
+        || (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && key === 'insert')
+      )
+    }
+
+    const isPasteShortcut = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase()
+      if (isMac) {
+        return event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && key === 'v'
+      }
+      return (
+        (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && key === 'v')
+        || (event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && key === 'insert')
+      )
+    }
+
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== 'keydown') return true
+      if (isCopyShortcut(event)) {
+        if (term.hasSelection()) {
+          event.preventDefault()
+          copySelectionToClipboard()
+        }
+        return false
+      }
+      if (isPasteShortcut(event)) {
+        event.preventDefault()
+        pasteFromClipboard()
+        return false
+      }
+      return true
+    })
+
+    const onContextMenu = (event: MouseEvent) => {
+      if (!term.hasSelection()) return
+      event.preventDefault()
+      copySelectionToClipboard()
+    }
+
+    const onCopy = (event: ClipboardEvent) => {
+      if (!term.hasSelection()) return
+      const selected = term.getSelection()
+      if (!selected) return
+      if (event.clipboardData) {
+        event.preventDefault()
+        event.clipboardData.setData('text/plain', selected)
+        showCopiedToast()
+        return
+      }
+      copySelectionToClipboard()
+    }
+
+    container.addEventListener('contextmenu', onContextMenu)
+    container.addEventListener('copy', onCopy)
 
     // 发送按键到对应的 PTY session
     term.onData((data) => {
@@ -512,10 +610,16 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         clearTimeout(timer)
       }
       pendingFocusTimers.length = 0
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current)
+        toastTimerRef.current = null
+      }
       unsubData()
       unsubExit()
       unsubPtyState()
       container.removeEventListener('pointerdown', focusTerminal)
+      container.removeEventListener('contextmenu', onContextMenu)
+      container.removeEventListener('copy', onCopy)
       resizeObserver.disconnect()
       window.removeEventListener('resize', onWindowResize)
       window.removeEventListener('focus', onWindowFocus)
@@ -537,6 +641,10 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         ref={containerRef}
         className="w-full h-full"
         style={{ padding: '8px' }}
+      />
+      <div
+        ref={toastRef}
+        className="pointer-events-none absolute right-3 bottom-3 rounded-md bg-black/35 px-2 py-1 text-[11px] text-gray-100 opacity-0 transition-opacity duration-200"
       />
     </div>
   )

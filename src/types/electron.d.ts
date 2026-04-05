@@ -3,6 +3,7 @@ import type { IPCResult } from './ipc.types'
 import type { SkillFile } from './skill.types'
 import type { DocFile, DocsIndex } from './docs.types'
 import type { SessionSnapshot, CurrentSessionInfo } from './snapshot.types'
+import type { EditCommandId } from './edit-command.types'
 
 export interface InstalledPluginInfo {
   pluginKey: string
@@ -52,6 +53,12 @@ export interface UsageStats {
     cacheReadTokens: number
     cacheWriteTokens: number
   }>
+  byHour: Record<string, {
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+  }>
   totals: {
     inputTokens: number
     outputTokens: number
@@ -75,7 +82,7 @@ export interface AppSettings {
 }
 
 export interface ClaudeCodeSettingsView {
-  apiKeyHelper: string
+  apiKey: string
   baseUrl: string
   defaultSonnetModel: string
   defaultOpusModel: string
@@ -119,6 +126,16 @@ interface ElectronAPI {
     read: () => Promise<IPCResult<ClaudeCodeSettingsView>>
     write: (patch: Partial<ClaudeCodeSettingsView>) => Promise<IPCResult<void>>
   }
+  windowControls: {
+    minimize: () => Promise<void>
+    toggleMaximize: () => Promise<boolean>
+    close: () => Promise<void>
+    isMaximized: () => Promise<boolean>
+    appIcon: () => Promise<string | null>
+  }
+  menu: {
+    invoke: (commandId: EditCommandId) => Promise<boolean>
+  }
   pty: {
     create: (projectDir: string, newSession: boolean, resumeId?: string) => Promise<IPCResult<void>>
     write: (projectDir: string, data: string) => Promise<IPCResult<void>>
@@ -138,7 +155,7 @@ interface ElectronAPI {
     generateIndex: (projectDir: string) => Promise<IPCResult<DocsIndex>>
   }
   usage: {
-    getStats: () => Promise<IPCResult<UsageStats>>
+    getStats: (range?: { startDate: string; endDate: string; startTime?: string; endTime?: string }) => Promise<IPCResult<UsageStats>>
   }
   onFileChanged: (callback: (event: { path: string; type: string }) => void) => () => void
   shell: {

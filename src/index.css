@@ -45,3 +45,9 @@ html:not(.dark) .xterm-screen {
   background-color: #faf6ef !important;
 }
 
+/* date input indicator in dark mode */
+html.dark .date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.2);
+  opacity: 0.9;
+}
+

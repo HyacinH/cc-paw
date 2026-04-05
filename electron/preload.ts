@@ -48,6 +48,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     read: () => ipcRenderer.invoke('claude-settings:read'),
     write: (patch: Partial<ClaudeCodeSettingsView>) => ipcRenderer.invoke('claude-settings:write', patch),
   },
+  windowControls: {
+    minimize: () => ipcRenderer.invoke('window-controls:minimize'),
+    toggleMaximize: () => ipcRenderer.invoke('window-controls:toggle-maximize'),
+    close: () => ipcRenderer.invoke('window-controls:close'),
+    isMaximized: () => ipcRenderer.invoke('window-controls:is-maximized'),
+    appIcon: () => ipcRenderer.invoke('window-controls:app-icon'),
+  },
+  menu: {
+    invoke: (commandId: string) => ipcRenderer.invoke('app-menu:invoke', commandId),
+  },
   pty: {
     create: (projectDir: string, newSession: boolean, resumeId?: string) =>
       ipcRenderer.invoke('pty:create', projectDir, newSession, resumeId),
@@ -88,7 +98,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     generateIndex: (projectDir: string) => ipcRenderer.invoke('docs:generate-index', projectDir),
   },
   usage: {
-    getStats: () => ipcRenderer.invoke('usage:get-stats'),
+    getStats: (range?: { startDate: string; endDate: string; startTime?: string; endTime?: string }) => ipcRenderer.invoke('usage:get-stats', range),
   },
   onFileChanged: (callback: (event: { path: string; type: string }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { path: string; type: string }) =>

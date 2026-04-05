@@ -1,46 +1,44 @@
 import fs from 'fs/promises'
 import path from 'path'
-import { execFile } from 'child_process'
+import { exec } from 'child_process'
 import { promisify } from 'util'
 import Anthropic from '@anthropic-ai/sdk'
 import { CLAUDE_PATHS } from './claude-paths'
 import { getCurrentSessionId } from './snapshot.service'
 
-const execFileAsync = promisify(execFile)
+const execAsync = promisify(exec)
 
 interface AnthropicCredentials {
   apiKey: string
   baseURL?: string
 }
 
+interface ClaudeSettings {
+  apiKeyHelper?: string
+  env?: {
+    ANTHROPIC_API_KEY?: string
+    ANTHROPIC_BASE_URL?: string
+    ANTHROPIC_PROXY_AUTH_TOKEN?: string
+  }
+}
+
+interface ResolvedProxyAuth {
+  token?: string
+}
+
 /**
  * Resolve Anthropic credentials from the environment or ~/.claude/settings.json,
  * mirroring how Claude Code CLI itself resolves them at runtime.
  *
- * - apiKey:  process.env.ANTHROPIC_API_KEY → apiKeyHelper command
+ * - apiKey:  process.env.ANTHROPIC_API_KEY → settings.env.ANTHROPIC_API_KEY → apiKeyHelper command
  * - baseURL: process.env.ANTHROPIC_BASE_URL → settings.env.ANTHROPIC_BASE_URL
  */
 async function resolveCredentials(): Promise<AnthropicCredentials> {
-  let settings: { apiKeyHelper?: string; env?: { ANTHROPIC_BASE_URL?: string } } = {}
+  let settings: ClaudeSettings = {}
   try {
     const raw = await fs.readFile(CLAUDE_PATHS.settingsJson, 'utf-8')
     settings = JSON.parse(raw)
   } catch { /* file missing or malformed */ }
-
-  // --- API key ---
-  let apiKey = process.env.ANTHROPIC_API_KEY ?? ''
-  if (!apiKey) {
-    const helper = settings.apiKeyHelper
-    if (typeof helper === 'string' && helper.trim()) {
-      try {
-        const { stdout } = await execFileAsync('sh', ['-c', helper], { timeout: 5000 })
-        apiKey = stdout.trim()
-      } catch { /* command failed */ }
-    }
-  }
-  if (!apiKey) {
-    throw new Error('未找到 Anthropic API Key。请设置 ANTHROPIC_API_KEY 环境变量，或在 Claude Code 设置中配置 apiKeyHelper。')
-  }
 
   // --- Base URL ---
   const baseURL =
@@ -48,7 +46,32 @@ async function resolveCredentials(): Promise<AnthropicCredentials> {
     settings.env?.ANTHROPIC_BASE_URL ||
     undefined
 
+  // --- API key ---
+  // Priority: explicit env key -> settings env key -> apiKeyHelper command
+  // For proxy-hosted gateways, allow fallback dummy key if baseURL is set.
+  let apiKey = process.env.ANTHROPIC_API_KEY || settings.env?.ANTHROPIC_API_KEY || ''
+  if (!apiKey) {
+    const helper = settings.apiKeyHelper
+    if (typeof helper === 'string' && helper.trim()) {
+      try {
+        const { stdout } = await execAsync(helper, { timeout: 5000, shell: true })
+        apiKey = stdout.trim()
+      } catch { /* command failed */ }
+    }
+  }
+  if (!apiKey && baseURL) {
+    apiKey = 'proxy-managed-key'
+  }
+  if (!apiKey) {
+    throw new Error('未找到 Anthropic API Key。请设置 ANTHROPIC_API_KEY，或在 Claude Code 设置中保存 API Key（env.ANTHROPIC_API_KEY）/配置 apiKeyHelper；若使用代理托管，请同时配置 ANTHROPIC_BASE_URL。')
+  }
+
   return { apiKey, baseURL }
+}
+
+function resolveProxyAuth(): ResolvedProxyAuth {
+  const token = process.env.ANTHROPIC_PROXY_AUTH_TOKEN
+  return token ? { token } : {}
 }
 
 interface ContentBlock {
@@ -117,7 +140,12 @@ export async function summarizeCurrentSession(projectDir: string): Promise<strin
     .join('\n\n')
 
   const { apiKey, baseURL } = await resolveCredentials()
-  const client = new Anthropic({ apiKey, baseURL })
+  const { token: proxyToken } = resolveProxyAuth()
+  const client = new Anthropic({
+    apiKey,
+    baseURL,
+    ...(proxyToken ? { defaultHeaders: { Authorization: `Bearer ${proxyToken}` } } : {}),
+  })
   const response = await client.messages.create({
     model: 'claude-haiku-4-5',
     max_tokens: 200,

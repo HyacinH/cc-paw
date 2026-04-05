@@ -3,7 +3,7 @@ import { readFile, writeFile } from '../services/file.service'
 import { CLAUDE_PATHS } from '../services/claude-paths'
 
 export interface ClaudeCodeSettingsView {
-  apiKeyHelper: string
+  apiKey: string
   baseUrl: string
   defaultSonnetModel: string
   defaultOpusModel: string
@@ -27,7 +27,7 @@ export function registerClaudeSettingsHandlers(): void {
     try {
       const raw = await readRaw()
       const view: ClaudeCodeSettingsView = {
-        apiKeyHelper: raw.apiKeyHelper ?? '',
+        apiKey: raw.env?.ANTHROPIC_API_KEY ?? '',
         baseUrl: raw.env?.ANTHROPIC_BASE_URL ?? '',
         defaultSonnetModel: raw.env?.ANTHROPIC_DEFAULT_SONNET_MODEL ?? 'claude-sonnet-4-6',
         defaultOpusModel: raw.env?.ANTHROPIC_DEFAULT_OPUS_MODEL ?? 'claude-opus-4-6',
@@ -44,15 +44,16 @@ export function registerClaudeSettingsHandlers(): void {
       const raw = await readRaw()
 
       // Only update the fields we manage; leave all other settings (OTEL, telemetry, etc.) untouched
-      if (patch.apiKeyHelper !== undefined) raw.apiKeyHelper = patch.apiKeyHelper
-      if (patch.baseUrl !== undefined || patch.defaultSonnetModel !== undefined ||
-          patch.defaultOpusModel !== undefined || patch.defaultHaikuModel !== undefined) {
-        raw.env = raw.env ?? {}
-        if (patch.baseUrl !== undefined) raw.env.ANTHROPIC_BASE_URL = patch.baseUrl
-        if (patch.defaultSonnetModel !== undefined) raw.env.ANTHROPIC_DEFAULT_SONNET_MODEL = patch.defaultSonnetModel
-        if (patch.defaultOpusModel !== undefined) raw.env.ANTHROPIC_DEFAULT_OPUS_MODEL = patch.defaultOpusModel
-        if (patch.defaultHaikuModel !== undefined) raw.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = patch.defaultHaikuModel
+      raw.env = raw.env ?? {}
+      if (patch.apiKey !== undefined) {
+        raw.env.ANTHROPIC_API_KEY = patch.apiKey
+        // Prefer explicit key in settings UI to avoid helper conflicts
+        if (patch.apiKey.trim()) raw.apiKeyHelper = ''
       }
+      if (patch.baseUrl !== undefined) raw.env.ANTHROPIC_BASE_URL = patch.baseUrl
+      if (patch.defaultSonnetModel !== undefined) raw.env.ANTHROPIC_DEFAULT_SONNET_MODEL = patch.defaultSonnetModel
+      if (patch.defaultOpusModel !== undefined) raw.env.ANTHROPIC_DEFAULT_OPUS_MODEL = patch.defaultOpusModel
+      if (patch.defaultHaikuModel !== undefined) raw.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = patch.defaultHaikuModel
 
       return writeFile(CLAUDE_PATHS.settingsJson, JSON.stringify(raw, null, 2))
     } catch (e) {

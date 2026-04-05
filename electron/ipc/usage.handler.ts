@@ -30,6 +30,12 @@ export interface UsageStats {
     cacheReadTokens: number
     cacheWriteTokens: number
   }>
+  byHour: Record<string, {      // YYYY-MM-DDTHH
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+  }>
   totals: {
     inputTokens: number
     outputTokens: number
@@ -64,10 +70,67 @@ export function calcCost(stats: { inputTokens: number; outputTokens: number; cac
   )
 }
 
-async function parseProjectUsage(projectsDir: string): Promise<UsageStats> {
+interface UsageQueryRange {
+  startDate: string
+  endDate: string
+  startTime?: string
+  endTime?: string
+}
+
+function rangeKey(range?: UsageQueryRange): string {
+  if (!range) return 'all'
+  return `${range.startDate}__${range.endDate}__${range.startTime ?? ''}__${range.endTime ?? ''}`
+}
+
+let usageCache: {
+  signature: string
+  byRange: Map<string, UsageStats>
+} | null = null
+
+async function buildProjectsSignature(projectsDir: string): Promise<string> {
+  let projectEntries: fs.Dirent[]
+  try {
+    projectEntries = await fs.readdir(projectsDir, { withFileTypes: true })
+  } catch {
+    return 'missing'
+  }
+
+  let fileCount = 0
+  let totalSize = 0
+  let maxMtimeMs = 0
+
+  for (const entry of projectEntries) {
+    if (!entry.isDirectory()) continue
+    const projectDir = path.join(projectsDir, entry.name)
+
+    let files: string[]
+    try {
+      files = (await fs.readdir(projectDir)).filter((f) => f.endsWith('.jsonl'))
+    } catch {
+      continue
+    }
+
+    fileCount += files.length
+
+    for (const file of files) {
+      try {
+        const stat = await fs.stat(path.join(projectDir, file))
+        totalSize += stat.size
+        if (stat.mtimeMs > maxMtimeMs) maxMtimeMs = stat.mtimeMs
+      } catch {
+        // ignore transient file errors
+      }
+    }
+  }
+
+  return `${projectEntries.length}:${fileCount}:${totalSize}:${Math.floor(maxMtimeMs)}`
+}
+
+async function parseProjectUsage(projectsDir: string, range?: UsageQueryRange): Promise<UsageStats> {
   const stats: UsageStats = {
     byProject: {},
     byDate: {},
+    byHour: {},
     totals: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, sessionCount: 0, messageCount: 0, estimatedCost: 0 },
   }
 
@@ -114,7 +177,37 @@ async function parseProjectUsage(projectsDir: string): Promise<UsageStats> {
         const msgCost = calcCost({ inputTokens: input, outputTokens: output, cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite }, model)
 
         const ts = obj.timestamp as string | undefined
-        const date = ts ? ts.slice(0, 10) : new Date().toISOString().slice(0, 10)
+        const nowIso = new Date().toISOString()
+        const normalizedTs = ts && ts.length >= 13 ? ts : nowIso
+        const parsedDate = new Date(normalizedTs)
+
+        let date = normalizedTs.slice(0, 10)
+        let hourKey = normalizedTs.slice(0, 13)
+
+        if (!Number.isNaN(parsedDate.getTime())) {
+          const y = parsedDate.getFullYear()
+          const m = String(parsedDate.getMonth() + 1).padStart(2, '0')
+          const d = String(parsedDate.getDate()).padStart(2, '0')
+          const hour = String(parsedDate.getHours()).padStart(2, '0')
+          date = `${y}-${m}-${d}`
+          hourKey = `${date}T${hour}`
+        }
+
+        const inDateRange = !range || (date >= range.startDate && date <= range.endDate)
+        if (!inDateRange) continue
+
+        if (range?.startTime || range?.endTime) {
+          if (Number.isNaN(parsedDate.getTime())) continue
+          const timeMs = parsedDate.getTime()
+          if (range.startTime) {
+            const startMs = new Date(range.startTime).getTime()
+            if (!Number.isNaN(startMs) && timeMs < startMs) continue
+          }
+          if (range.endTime) {
+            const endMs = new Date(range.endTime).getTime()
+            if (!Number.isNaN(endMs) && timeMs > endMs) continue
+          }
+        }
 
         // totals
         stats.totals.inputTokens      += input
@@ -148,6 +241,15 @@ async function parseProjectUsage(projectsDir: string): Promise<UsageStats> {
         stats.byDate[date].outputTokens     += output
         stats.byDate[date].cacheReadTokens  += cacheRead
         stats.byDate[date].cacheWriteTokens += cacheWrite
+
+        // by hour
+        if (!stats.byHour[hourKey]) {
+          stats.byHour[hourKey] = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+        }
+        stats.byHour[hourKey].inputTokens      += input
+        stats.byHour[hourKey].outputTokens     += output
+        stats.byHour[hourKey].cacheReadTokens  += cacheRead
+        stats.byHour[hourKey].cacheWriteTokens += cacheWrite
       }
     }
   }
@@ -156,9 +258,31 @@ async function parseProjectUsage(projectsDir: string): Promise<UsageStats> {
 }
 
 export function registerUsageHandlers(): void {
-  ipcMain.handle('usage:get-stats', async () => {
+  ipcMain.handle('usage:get-stats', async (_event, range?: { startDate?: string; endDate?: string; startTime?: string; endTime?: string }) => {
     try {
-      const stats = await parseProjectUsage(CLAUDE_PATHS.projectsDir)
+      const parsedRange = range?.startDate && range?.endDate
+        ? {
+            startDate: range.startDate,
+            endDate: range.endDate,
+            startTime: range.startTime,
+            endTime: range.endTime,
+          }
+        : undefined
+
+      const signature = await buildProjectsSignature(CLAUDE_PATHS.projectsDir)
+      if (!usageCache || usageCache.signature !== signature) {
+        usageCache = {
+          signature,
+          byRange: new Map<string, UsageStats>(),
+        }
+      }
+
+      const key = rangeKey(parsedRange)
+      const cached = usageCache.byRange.get(key)
+      if (cached) return { success: true, data: cached }
+
+      const stats = await parseProjectUsage(CLAUDE_PATHS.projectsDir, parsedRange)
+      usageCache.byRange.set(key, stats)
       return { success: true, data: stats }
     } catch (err) {
       return { success: false, error: String(err) }

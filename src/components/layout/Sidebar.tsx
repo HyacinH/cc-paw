@@ -3,7 +3,7 @@ import { version } from '../../../package.json'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   FileText, Zap, Server, Package, Settings, Plus,
-  BookOpen, Sun, Moon, BarChart2, PanelLeftClose, PanelLeft,
+  BookOpen, Sun, Moon, BarChart2,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAppSettingsStore } from '../../store/appSettings.store'
@@ -106,7 +106,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-export default function Sidebar({ open, onToggle, isMac }: { open: boolean; onToggle: () => void; isMac: boolean }) {
+export default function Sidebar({ open }: { open: boolean }) {
   const { projects, loaded, load, addProject } = useAppSettingsStore()
   const { theme, toggle } = useThemeStore()
   const { states: ptyStates } = usePtyStore()
@@ -138,18 +138,6 @@ export default function Sidebar({ open, onToggle, isMac }: { open: boolean; onTo
       {/* ── 展开状态 ── */}
       {open ? (
         <>
-          {!isMac && (
-            <div className="flex items-center justify-between px-3 h-9 shrink-0 border-b border-[#e2d9c8] dark:border-gray-800">
-              <span className="text-sm font-semibold text-[#2d2218] dark:text-gray-100">CC Paw</span>
-              <button
-                onClick={onToggle}
-                title="收起侧边栏"
-                className="p-1.5 rounded-md text-[#a8967e] dark:text-gray-600 hover:text-[#2d2218] dark:hover:text-gray-300 hover:bg-[#e8dfd0] dark:hover:bg-gray-700 transition-colors"
-              >
-                <PanelLeftClose size={14} />
-              </button>
-            </div>
-          )}
           <nav className="flex-1 py-2 px-2 space-y-0.5 overflow-y-auto">
             <NavItem to="/" icon={FileText} label="设定" end />
             <NavItem to="/skills" icon={Zap} label="Skills" />
@@ -252,15 +240,6 @@ export default function Sidebar({ open, onToggle, isMac }: { open: boolean; onTo
       ) : (
         /* ── 收起状态：图标栏 ── */
         <div className="flex flex-col items-center flex-1 py-2 gap-0.5">
-          {!isMac && (
-            <button
-              onClick={onToggle}
-              title="展开侧边栏"
-              className="flex items-center justify-center w-9 h-9 rounded-lg text-[#a8967e] dark:text-gray-600 hover:text-[#2d2218] dark:hover:text-gray-300 hover:bg-[#e8dfd0] dark:hover:bg-gray-800 transition-colors"
-            >
-              <PanelLeft size={16} />
-            </button>
-          )}
           <IconNavItem to="/" icon={FileText} label="设定" end />
           <IconNavItem to="/skills" icon={Zap} label="Skills" />
           <IconNavItem to="/mcp" icon={Server} label="MCP" />

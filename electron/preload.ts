@@ -98,7 +98,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     generateIndex: (projectDir: string) => ipcRenderer.invoke('docs:generate-index', projectDir),
   },
   usage: {
-    getStats: () => ipcRenderer.invoke('usage:get-stats'),
+    getStats: (range?: { startDate: string; endDate: string; startTime?: string; endTime?: string }) => ipcRenderer.invoke('usage:get-stats', range),
   },
   onFileChanged: (callback: (event: { path: string; type: string }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { path: string; type: string }) =>

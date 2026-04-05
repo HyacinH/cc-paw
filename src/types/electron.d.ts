@@ -53,6 +53,12 @@ export interface UsageStats {
     cacheReadTokens: number
     cacheWriteTokens: number
   }>
+  byHour: Record<string, {
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+  }>
   totals: {
     inputTokens: number
     outputTokens: number
@@ -149,7 +155,7 @@ interface ElectronAPI {
     generateIndex: (projectDir: string) => Promise<IPCResult<DocsIndex>>
   }
   usage: {
-    getStats: () => Promise<IPCResult<UsageStats>>
+    getStats: (range?: { startDate: string; endDate: string; startTime?: string; endTime?: string }) => Promise<IPCResult<UsageStats>>
   }
   onFileChanged: (callback: (event: { path: string; type: string }) => void) => () => void
   shell: {

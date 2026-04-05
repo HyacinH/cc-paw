@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { BarChart2, Loader2, RefreshCw, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import type { UsageStats } from '../types/electron'
 
@@ -12,6 +12,19 @@ const MAX_DAYS = 30
 const MAX_WEEK_DAYS = 365
 const MAX_YEARS = 5
 const MAX_DAYS_TOTAL = 365 * MAX_YEARS
+
+const VIEW_OPTIONS: ReadonlyArray<{ key: ViewMode; label: string }> = [
+  { key: 'hour', label: 'H' },
+  { key: 'day', label: 'D' },
+  { key: 'week', label: 'W' },
+  { key: 'month', label: 'M' },
+]
+
+const QUICK_PRESETS: ReadonlyArray<{ key: QuickRangePreset; label: string }> = [
+  { label: '48h', key: '48h' },
+  { label: '7天', key: '7d' },
+  { label: '30天', key: '30d' },
+]
 
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -41,6 +54,15 @@ function parseISODate(iso: string): Date {
   const [y, m, d] = iso.split('-').map(Number)
   if (!y || !m || !d) return new Date()
   return new Date(y, m - 1, d)
+}
+
+function ceilToHour(date: Date): Date {
+  const d = new Date(date)
+  if (d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0) {
+    d.setHours(d.getHours() + 1)
+  }
+  d.setMinutes(0, 0, 0)
+  return d
 }
 
 function startOfIsoWeek(date: Date): Date {
@@ -225,6 +247,8 @@ export default function UsagePage() {
   const [rangeHint, setRangeHint] = useState<string>('')
   const [rangeError, setRangeError] = useState<string | null>(null)
   const [timeRange, setTimeRange] = useState<Pick<UsageRange, 'startTime' | 'endTime'>>({})
+  const [quickOpen, setQuickOpen] = useState(false)
+  const quickMenuRef = useRef<HTMLDivElement | null>(null)
 
   const [multiplier, setMultiplier] = useState<number>(() => getInitialMultiplier())
   const [multiplierInput, setMultiplierInput] = useState<string>(() => String(getInitialMultiplier()))
@@ -235,9 +259,11 @@ export default function UsagePage() {
 
     if (preset === '48h') {
       const start = new Date(end.getTime() - 48 * 3600000)
-      setRangeStart(toISODate(start))
+      const startRounded = ceilToHour(start)
+      setRangeStart(toISODate(startRounded))
       setRangeEnd(toISODate(end))
-      setTimeRange({ startTime: start.toISOString(), endTime: end.toISOString() })
+      setTimeRange({ startTime: startRounded.toISOString(), endTime: end.toISOString() })
+      setQuickOpen(false)
       return
     }
 
@@ -247,6 +273,7 @@ export default function UsagePage() {
     setRangeStart(startIso)
     setRangeEnd(endIso)
     setTimeRange({})
+    setQuickOpen(false)
   }
 
   const load = async (range: UsageRange = { startDate: rangeStart, endDate: rangeEnd, ...timeRange }) => {
@@ -262,6 +289,28 @@ export default function UsagePage() {
   useEffect(() => {
     localStorage.setItem('cc-paw-cost-multiplier', String(multiplier))
   }, [multiplier])
+
+
+  useEffect(() => {
+    if (!quickOpen) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!quickMenuRef.current?.contains(event.target as Node)) {
+        setQuickOpen(false)
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setQuickOpen(false)
+    }
+
+    window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [quickOpen])
 
   useEffect(() => {
     if (rangeStart > rangeEnd) {
@@ -314,12 +363,21 @@ export default function UsagePage() {
     if (dateDiffDaysInclusive(start, end) > MAX_DAYS_TOTAL) return empty
 
     if (viewMode === 'hour') {
-      const startHour = new Date(start)
-      startHour.setHours(0, 0, 0, 0)
-      const endHour = new Date(end)
-      endHour.setHours(23, 0, 0, 0)
+      const startHour = timeRange.startTime
+        ? new Date(timeRange.startTime)
+        : new Date(start)
+      const endHour = timeRange.endTime
+        ? new Date(timeRange.endTime)
+        : new Date(end)
+
+      if (!timeRange.startTime) startHour.setHours(0, 0, 0, 0)
+      else startHour.setMinutes(0, 0, 0)
+
+      if (!timeRange.endTime) endHour.setHours(23, 0, 0, 0)
+      else endHour.setMinutes(0, 0, 0)
 
       const data: Array<{ key: string; label: string; tokens: number; dateText?: string }> = []
+      let periodTotal = 0
       const cursor = new Date(startHour)
       while (cursor <= endHour && data.length <= MAX_HOURS) {
         const isoDate = toISODate(cursor)
@@ -327,15 +385,20 @@ export default function UsagePage() {
         const key = `${isoDate}T${hour}`
         const entry = byHour[key]
         const tokens = entry ? entry.inputTokens + entry.outputTokens : 0
+        periodTotal += tokens
         const displayLabel = Number(hour) % 6 === 0 ? hour : ''
         data.push({ key, label: displayLabel, tokens, dateText: `${isoDate} ${hour}:00` })
         cursor.setHours(cursor.getHours() + 1)
       }
 
+      const title = timeRange.startTime && timeRange.endTime
+        ? '小时视图（最近 48 小时）'
+        : `小时视图（${rangeStart} ~ ${rangeEnd}，最多 ${MAX_HOURS} 小时）`
+
       return {
-        title: `小时视图（${rangeStart} ~ ${rangeEnd}，最多 ${MAX_HOURS} 小时）`,
+        title,
         data,
-        periodTotal: data.reduce((sum, d) => sum + d.tokens, 0),
+        periodTotal,
       }
     }
 
@@ -446,12 +509,7 @@ export default function UsagePage() {
 
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-            {([
-              { key: 'hour', label: 'H' },
-              { key: 'day', label: 'D' },
-              { key: 'week', label: 'W' },
-              { key: 'month', label: 'M' },
-            ] as const).map((item) => {
+            {VIEW_OPTIONS.map((item) => {
               const disabled = !isViewAllowed(item.key, rangeStart, rangeEnd)
               return (
                 <button
@@ -475,28 +533,27 @@ export default function UsagePage() {
             })}
           </div>
 
-          <div className="relative group">
+          <div ref={quickMenuRef} className="relative">
             <button
+              onClick={() => setQuickOpen((v) => !v)}
               className="min-w-[60px] px-3 py-1 text-xs rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800"
               title="快捷范围"
             >
               快捷
             </button>
-            <div className="absolute right-0 top-full mt-1 hidden group-hover:flex flex-col gap-1 p-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-20">
-              {[
-                { label: '48h', key: '48h' as const },
-                { label: '7天', key: '7d' as const },
-                { label: '30天', key: '30d' as const },
-              ].map((preset) => (
-                <button
-                  key={preset.label}
-                  onClick={() => applyRangePreset(preset.key)}
-                  className="px-2 py-1 text-xs rounded text-left text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
+            {quickOpen && (
+              <div className="absolute right-0 top-full mt-1 flex flex-col gap-1 p-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-20">
+                {QUICK_PRESETS.map((preset) => (
+                  <button
+                    key={preset.key}
+                    onClick={() => applyRangePreset(preset.key)}
+                    className="px-2 py-1 text-xs rounded text-left text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1">

@@ -7,7 +7,7 @@
 
   **A desktop GUI for managing your entire [Claude Code](https://claude.ai/code) workflow.**
 
-  [![Version](https://img.shields.io/badge/version-0.11.3-blue.svg)](package.json)
+  [![Version](https://img.shields.io/badge/version-0.11.5-blue.svg)](package.json)
   [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgray.svg)](#platform-support)
   [![Electron](https://img.shields.io/badge/Electron-33-47848F.svg)](https://electronjs.org/)
@@ -20,6 +20,12 @@
 Working with Claude Code across multiple projects means juggling terminal windows and guessing when Claude has finished. CC Paw gives each project its own persistent Claude Code session with real-time status indicators and background notifications — so you can switch to other work and come back exactly when needed.
 
 On top of that, it brings all Claude Code configuration into one visual interface: CLAUDE.md knowledge bases, Skills, MCP servers, and plugins — no JSON editing, no hunting through hidden directories.
+
+## Get the app
+
+- **Installers (recommended):** download the latest **DMG** (macOS) or **Setup .exe** (Windows) from [GitHub Releases](https://github.com/HyacinH/cc-paw/releases).
+- **Run from source:** clone the repo, run `npm install`, then `npm run dev` (see [Quick Start](#quick-start) for details). You need the **Claude Code** CLI and a populated `~/.claude/` directory to use the app meaningfully.
+- **Build an installer locally:** `npm run package` outputs platform-specific artifacts under `release/` (host OS only).
 
 ## Screenshots
 
@@ -228,6 +234,26 @@ CC Paw is a standard Electron app with strict process separation. All file syste
 ```
 
 All IPC channel names follow the `domain:action` convention (`skills:write`, `mcp:read`, etc.). Every handler returns a typed result envelope — `{ success: true; data: T }` or `{ success: false; error: string }` — which the `src/api/` layer unwraps so pages receive `data` directly or throw on error. Platform-specific logic (PATH resolution, shell detection, binary lookup) is centralised in `electron/services/platform.ts`.
+
+---
+
+## Roadmap
+
+Ideas and next steps — not a commitment order; [issues](https://github.com/HyacinH/cc-paw/issues) and PRs welcome.
+
+- **Linux**: first-class validation, CI coverage, and documented install path
+- **Docs**: more “how it maps to Claude Code files” diagrams for new contributors
+- **Accessibility**: keyboard navigation and contrast pass on core flows
+- **i18n**: broader locale coverage beyond EN/ZH README
+- **Plugin marketplace**: richer discovery (filters, sorting) and clearer install outcomes
+- **Terminal**: quality-of-life (themes, copy/paste affordances) where it does not fight Claude Code UX
+- **Telemetry**: optional, privacy-preserving diagnostics — *only if* the community wants it and it is opt-in
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, build commands, and PR expectations. Bug reports and feature ideas are best filed as [GitHub issues](https://github.com/HyacinH/cc-paw/issues) with steps to reproduce when applicable.
 
 ---
 

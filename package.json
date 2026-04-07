@@ -2,6 +2,7 @@
   "name": "cc-paw",
   "version": "0.11.5",
   "private": true,
+  "license": "MIT",
   "description": "Local UI for managing Claude Code configuration",
   "main": "dist/electron/main.js",
   "scripts": {

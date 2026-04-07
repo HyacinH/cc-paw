@@ -34,7 +34,9 @@ On top of that, it brings all Claude Code configuration into one visual interfac
 Run multiple Claude Code sessions in parallel — one per project — with a persistent terminal and clear status indicators in the sidebar.
 
 <div align="center">
-  <img src="resources/images/image_project.png" alt="Multiple projects running Claude Code sessions" width="900" />
+
+![Multiple projects running Claude Code sessions](resources/images/image_project.png)
+
 </div>
 
 ### Plugin marketplace
@@ -42,7 +44,9 @@ Run multiple Claude Code sessions in parallel — one per project — with a per
 Discover, install, and manage Claude Code plugins from within the app — with live terminal output and per-scope installs (user vs project).
 
 <div align="center">
-  <img src="resources/images/image_plugin.png" alt="Plugin marketplace and plugin management" width="900" />
+
+![Plugin marketplace and plugin management](resources/images/image_plugin.png)
+
 </div>
 
 ### Token usage analytics
@@ -50,7 +54,9 @@ Discover, install, and manage Claude Code plugins from within the app — with l
 Visualize usage and cost from Claude Code session logs, with trends and per-project breakdowns.
 
 <div align="center">
-  <img src="resources/images/image_usage.png" alt="Token usage dashboard with breakdowns" width="900" />
+
+![Token usage dashboard with breakdowns](resources/images/image_usage.png)
+
 </div>
 
 ## Features

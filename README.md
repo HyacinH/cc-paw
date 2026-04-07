@@ -21,9 +21,36 @@ Working with Claude Code across multiple projects means juggling terminal window
 
 On top of that, it brings all Claude Code configuration into one visual interface: CLAUDE.md knowledge bases, Skills, MCP servers, and plugins — no JSON editing, no hunting through hidden directories.
 
+## Screenshots
+
+### Multi-project Claude sessions
+
+Run multiple Claude Code sessions in parallel — one per project — with a persistent terminal and clear status indicators in the sidebar.
+
+<div align="center">
+  <img src="resources/images/image.png" alt="Multiple projects running Claude Code sessions" width="900" />
+</div>
+
+### Plugin marketplace
+
+Discover, install, and manage Claude Code plugins from within the app — with live terminal output and per-scope installs (user vs project).
+
+<div align="center">
+  <img src="resources/images/image0.png" alt="Plugin marketplace and plugin management" width="900" />
+</div>
+
+### Token usage analytics
+
+Visualize usage and cost from Claude Code session logs, with trends and per-project breakdowns.
+
+<div align="center">
+  <img src="resources/images/image1.png" alt="Token usage dashboard with breakdowns" width="900" />
+</div>
+
 ## Features
 
 ### Multi-Project Claude Sessions
+
 Run independent Claude Code sessions for multiple projects simultaneously — each in its own persistent terminal.
 
 - **Add any directory** as a project via the sidebar; switch between projects instantly
@@ -36,20 +63,26 @@ Run independent Claude Code sessions for multiple projects simultaneously — ea
 - **System notifications** when Claude finishes or needs input, even when CC Paw is in the background — so you can work in other apps and return exactly when needed
 
 ### Knowledge Base (CLAUDE.md)
+
 Edit the Markdown instructions that Claude Code reads at startup. CC Paw manages two layers independently:
+
 - **Global** — `~/.claude/CLAUDE.md`, applies to every project
 - **Per-project** — `<project>/CLAUDE.md`, scoped to a single repository
 
 Both are edited in Monaco Editor (the same engine used by VS Code) with syntax highlighting and word wrap.
 
 ### Skills Manager
+
 Skills are Markdown prompt templates stored in `~/.claude/skills/` and triggered via `/skill-name` in Claude Code. CC Paw lets you:
+
 - Create, edit, rename, and delete skill files
 - Import a skill directly from a URL (e.g. a raw GitHub link)
 - Browse skills contributed by installed plugins (read-only)
 
 ### MCP Server Configuration
+
 Visual editor for the `mcpServers` field in `~/.claude.json` — the only location Claude Code CLI actually reads. For each server you can:
+
 - Add, edit, and remove servers
 - Toggle enabled/disabled with a single click
 - Configure command, args, and environment variables
@@ -57,7 +90,9 @@ Visual editor for the `mcpServers` field in `~/.claude.json` — the only locati
 - Validates JSON before writing to prevent config corruption
 
 ### Plugin Marketplace
+
 Browse and install Claude Code plugins from the official Anthropic marketplace without leaving the app:
+
 - Filter by category and search by name/description
 - One-click install with live terminal output
 - Choose install scope: **user** (`~/.claude`, all projects) or **project** (current directory)
@@ -65,19 +100,25 @@ Browse and install Claude Code plugins from the official Anthropic marketplace w
 - Run arbitrary `claude plugin` or `npx skills` commands from a built-in command runner
 
 ### Project Docs
+
 Manage a `docs/` folder inside each project for structured reference documents:
+
 - Create and edit Markdown files with live preview rendering
 - Auto-saves while you type (800 ms debounce)
 - Generate a `docs/index.json` summary that can be referenced from `CLAUDE.md` as a knowledge index
 
 ### Token Usage Dashboard
+
 Reads Claude Code's JSONL session logs from `~/.claude/projects/` and visualises your API consumption:
+
 - Total tokens (input, output, cache read/write) and estimated cost
 - 30-day bar chart of daily token usage
 - Per-project breakdown with expandable detail rows
 
 ### Settings
+
 Directly edits `~/.claude/settings.json`, shared with Claude Code CLI:
+
 - `apiKeyHelper` — shell command whose stdout is used as the API key
 - `ANTHROPIC_BASE_URL` — custom API endpoint or proxy address
 - Specific model IDs for each tier (Sonnet / Opus / Haiku), e.g. `claude-sonnet-4-6`
@@ -87,15 +128,18 @@ Directly edits `~/.claude/settings.json`, shared with Claude Code CLI:
 
 ## Platform Support
 
-| Platform | Status | Notes |
-|---|---|---|
-| **macOS** | ✅ Fully supported | Native `hiddenInset` title bar, login-shell PATH capture |
-| **Windows** | ✅ Supported | Native system title bar, ConPTY terminal, NSIS installer |
-| Linux | 🔧 Untested | Likely works; PTY and file paths are cross-platform |
+
+| Platform    | Status            | Notes                                                    |
+| ----------- | ----------------- | -------------------------------------------------------- |
+| **macOS**   | ✅ Fully supported | Native `hiddenInset` title bar, login-shell PATH capture |
+| **Windows** | ✅ Supported       | Native system title bar, ConPTY terminal, NSIS installer |
+| Linux       | 🔧 Untested       | Likely works; PTY and file paths are cross-platform      |
+
 
 ### Prerequisites
 
 **All platforms:**
+
 - **Node.js** 18+
 - **npm** 9+
 - **Claude Code** CLI installed (`~/.claude/` must exist)

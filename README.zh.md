@@ -34,7 +34,7 @@
 一个项目对应一个持久化 Claude Code 会话（独立终端），配合侧边栏状态指示，方便在多个仓库之间快速切换与跟进进度。
 
 <div align="center">
-  <img src="resources/images/image.png" alt="多项目并行运行 Claude Code 会话" width="900" />
+  <img src="resources/images/image_project.png" alt="多项目并行运行 Claude Code 会话" width="900" />
 </div>
 
 ### 插件市场
@@ -42,7 +42,7 @@
 在应用内浏览、安装与管理 Claude Code 插件，支持查看实时终端输出，并可选择安装范围（用户级 / 项目级）。
 
 <div align="center">
-  <img src="resources/images/image0.png" alt="插件市场与插件管理" width="900" />
+  <img src="resources/images/image_plugin.png" alt="插件市场与插件管理" width="900" />
 </div>
 
 ### Token 用量分析
@@ -50,7 +50,7 @@
 从 Claude Code 会话日志读取数据，统计 token 与费用，展示趋势与按项目拆分的明细。
 
 <div align="center">
-  <img src="resources/images/image1.png" alt="Token 用量面板与项目拆分" width="900" />
+  <img src="resources/images/image_usage.png" alt="Token 用量面板与项目拆分" width="900" />
 </div>
 
 ## 功能

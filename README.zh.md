@@ -7,7 +7,7 @@
 
   **管理 [Claude Code](https://claude.ai/code) 全套工作流的桌面 GUI 应用。**
 
-  [![Version](https://img.shields.io/badge/版本-0.11.3-blue.svg)](package.json)
+  [![Version](https://img.shields.io/badge/版本-0.11.5-blue.svg)](package.json)
   [![License](https://img.shields.io/badge/协议-MIT-green.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/平台-macOS%20%7C%20Windows-lightgray.svg)](#平台支持)
   [![Electron](https://img.shields.io/badge/Electron-33-47848F.svg)](https://electronjs.org/)
@@ -20,6 +20,32 @@
 同时在多个项目里用 Claude Code 工作，意味着要不断在终端窗口间切换，还得盯着看 Claude 有没有回复。CC Paw 为每个项目提供独立持久的 Claude Code 会话，配合实时状态指示和后台通知——你可以去做别的事，通知到了再切回来。
 
 此外，它把所有 Claude Code 配置都汇聚到一个可视化界面：CLAUDE.md 知识库、Skills、MCP 服务器、插件市场——无需手动编辑 JSON，无需在隐藏目录间翻找。
+
+## 获取应用
+
+- **安装包（推荐）：** 在 [GitHub Releases](https://github.com/HyacinH/cc-paw/releases) 下载最新 **DMG**（macOS）或 **Setup .exe**（Windows）。
+- **源码运行：** 克隆仓库后执行 `npm install`，再 `npm run dev`（详见下文 [快速开始](#快速开始)）。完整使用需要已安装 **Claude Code** CLI，且存在可用的 `~/.claude/`。
+- **本地打包：** 执行 `npm run package`，在 `release/` 下生成当前系统对应的安装包（仅当前主机平台）。
+
+## 截图
+
+### 多项目并行 Claude 会话
+
+一个项目对应一个持久化 Claude Code 会话（独立终端），配合侧边栏状态指示，方便在多个仓库之间快速切换与跟进进度。
+
+![多项目并行运行 Claude Code 会话](resources/images/image_project.png)
+
+### 插件市场
+
+在应用内浏览、安装与管理 Claude Code 插件，支持查看实时终端输出，并可选择安装范围（用户级 / 项目级）。
+
+![插件市场与插件管理](resources/images/image_plugin.png)
+
+### Token 用量分析
+
+从 Claude Code 会话日志读取数据，统计 token 与费用，展示趋势与按项目拆分的明细。
+
+![Token 用量面板与项目拆分](resources/images/image_usage.png)
 
 ## 功能
 
@@ -186,6 +212,27 @@ CC Paw 是标准的 Electron 应用，严格分离进程职责。所有文件系
 
 ---
 
+## 路线图
+
+以下为方向性设想，**不保证优先级顺序**；欢迎通过 [Issues](https://github.com/HyacinH/cc-paw/issues) 讨论或提交 PR。
+
+- **Linux**：实机验证、CI 覆盖与可复现的安装说明
+- **文档**：面向贡献者的「与 Claude Code 配置文件对应关系」示意图
+- **无障碍**：核心流程的键盘操作与对比度改进
+- **国际化**：除中英文 README 外，界面与文档的更多语言
+- **插件市场**：更强的发现能力（筛选、排序）与更清晰的安装结果反馈
+- **终端体验**：在不干扰 Claude Code 使用习惯的前提下，优化主题与复制粘贴等细节
+- **可选遥测**：仅在社区明确需要且**默认关闭、充分说明隐私**的前提下考虑
+
+---
+
+## 参与贡献
+
+详见 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md)（英文见 [CONTRIBUTING.md](CONTRIBUTING.md)）。缺陷与功能建议请优先通过 [GitHub Issues](https://github.com/HyacinH/cc-paw/issues) 反馈，并尽量附复现步骤。
+
+---
+
 ## 开源协议
 
 [MIT](LICENSE)
+

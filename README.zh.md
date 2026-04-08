@@ -17,97 +17,71 @@
 
 ---
 
-同时在多个项目里用 Claude Code 工作，意味着要不断在终端窗口间切换，还得盯着看 Claude 有没有回复。CC Paw 为每个项目提供独立持久的 Claude Code 会话，配合实时状态指示和后台通知——你可以去做别的事，通知到了再切回来。
+CC Paw 面向需要同时管理多个 Claude Code 项目的用户：把分散在终端和配置文件中的流程，整合为一个清晰的可视化工作区。每个项目都有独立且持久的会话、实时状态与通知，你可以把精力放在需求与决策上，而不是反复切换工具。
 
-此外，它把所有 Claude Code 配置都汇聚到一个可视化界面：CLAUDE.md 知识库、Skills、MCP 服务器、插件市场——无需手动编辑 JSON，无需在隐藏目录间翻找。
+它还把 Claude Code 的关键配置流程可视化：系统指令（`CLAUDE.md`）、Skills、MCP 服务器、插件、项目文档与用量分析都能在界面统一管理。无论是非技术用户还是技术用户，都能更便捷地管理项目，获得更顺畅、更稳定的 Claude Code vibecoding 体验。
 
 ## 获取应用
 
 - **安装包（推荐）：** 在 [GitHub Releases](https://github.com/HyacinH/cc-paw/releases) 下载最新 **DMG**（macOS）或 **Setup .exe**（Windows）。
+- **macOS 安装提示（Gatekeeper）：** 若出现“`CC Paw` 已损坏，无法打开”的提示，请先把应用拖到 `Applications`，再执行：
+
+```bash
+sudo xattr -rd com.apple.quarantine "/Applications/CC Paw.app"
+```
+
 - **源码运行：** 克隆仓库后执行 `npm install`，再 `npm run dev`（详见下文 [快速开始](#快速开始)）。完整使用需要已安装 **Claude Code** CLI，且存在可用的 `~/.claude/`。
 - **本地打包：** 执行 `npm run package`，在 `release/` 下生成当前系统对应的安装包（仅当前主机平台）。
 
-## 截图
+## 核心功能
 
-### 多项目并行 Claude 会话
+### 项目工作区（多项目、会话、文档、设定）
 
-一个项目对应一个持久化 Claude Code 会话（独立终端），配合侧边栏状态指示，方便在多个仓库之间快速切换与跟进进度。
+与项目直接相关的核心流程集中在同一个工作区（下图为对应界面）：
 
-![多项目并行运行 Claude Code 会话](resources/images/image_project.png)
+- **多项目并行会话：** 每个项目独立且持久的 Claude 终端，切换项目不丢上下文。
+- **会话生命周期管理：** 支持新建会话，也可回看并继续历史存档会话。
+- **项目管理：** 支持项目命名、侧边栏快速切换，以及按项目状态实时标记。
+- **项目文档（Docs）：** 在 `docs/` 内编辑 Markdown，实时预览并自动保存。
+- **项目设定：** 直接在界面编辑 Claude Code 共享配置（`~/.claude/settings.json`）。
+
+![项目工作区：会话、文档与设定](resources/images/image_project.png)
 
 ### 插件市场
 
-在应用内浏览、安装与管理 Claude Code 插件，支持查看实时终端输出，并可选择安装范围（用户级 / 项目级）。
+插件相关能力集中在同一处，避免跨页面跳转（下图为对应界面）：
+
+- 浏览/筛选官方插件市场
+- 一键安装并查看实时终端输出
+- 选择安装范围：**用户级**（`~/.claude`）或 **项目级**
+- 管理已安装插件（启用/禁用/卸载）
+- 直接运行 `claude plugin` 与 `npx skills` 命令
 
 ![插件市场与插件管理](resources/images/image_plugin.png)
 
 ### Token 用量分析
 
-从 Claude Code 会话日志读取数据，统计 token 与费用，展示趋势与按项目拆分的明细。
+用量与成本在独立面板统一展示（下图为对应界面）：
+
+- 读取 `~/.claude/projects/` 下 Claude Code JSONL 日志
+- 汇总输入/输出/cache token 与估算费用
+- 支持自定义时间范围筛选
+- 提供按小时 / 日 / 周 / 月的柱状图视图
+- 按项目拆分并支持展开明细
 
 ![Token 用量面板与项目拆分](resources/images/image_usage.png)
 
-## 功能
+### 系统设定
 
-### 多项目并行 Claude 会话
-同时为多个项目运行独立的 Claude Code 会话，每个项目都有自己的持久化终端。
-
-- **侧边栏添加任意目录**作为项目，点击即可在项目间瞬间切换
-- **会话跨页面持久保持**——离开项目页面再回来，上下文完整保留
-- **一键开始新会话**，清空当前对话
-- **侧边栏实时状态指示**，一眼掌握每个项目的运行状态：
-  - 橙色发光 — Claude 正在工作
-  - 蓝色发光 — Claude 等待你的输入
-  - 暗环 — 会话空闲
-- **系统通知**：Claude 完成响应或需要输入时，即使 CC Paw 不在前台也会推送通知——你可以去做别的事，通知到了再切回来
-
-### 知识库（CLAUDE.md）
-编辑 Claude Code 启动时读取的 Markdown 指令文件，支持两个层级独立管理：
-- **全局** — `~/.claude/CLAUDE.md`，对所有项目生效
-- **项目级** — `<project>/CLAUDE.md`，仅对当前仓库生效
-
-均使用 Monaco Editor（VS Code 同款编辑器）编辑，支持语法高亮与自动换行。
+在 Monaco Editor 中统一维护全局与项目级 `CLAUDE.md` 系统指令。
 
 ### Skills 管理
-Skills 是存放在 `~/.claude/skills/` 的 Markdown 提示词模板，在 Claude Code 中通过 `/skill-name` 触发。CC Paw 支持：
-- 创建、编辑、重命名、删除 skill 文件
-- 直接从 URL（如 GitHub raw 链接）导入 skill
-- 浏览已安装插件提供的 skill（只读）
+
+管理 `~/.claude/skills/`，支持新增、编辑与 URL 导入。
 
 ### MCP 服务器配置
-`~/.claude.json` 中 `mcpServers` 字段的可视化编辑器（这是 Claude Code CLI 唯一实际读取的 MCP 配置位置）。每台服务器可以：
-- 添加、编辑、删除
-- 一键启用或禁用
-- 配置 command、args 和环境变量
-- 查看插件托管服务器的授权状态
-- 保存前自动进行 JSON 校验，防止配置文件损坏
 
-### 插件市场
-在应用内浏览并安装来自 Anthropic 官方市场的 Claude Code 插件：
-- 按分类筛选，按名称或描述搜索
-- 一键安装，实时显示终端输出
-- 选择安装范围：**用户**（`~/.claude`，所有项目可用）或 **项目**（当前目录）
-- 管理已安装插件：启用/禁用、卸载
-- 内置命令运行器，支持任意 `claude plugin` 或 `npx skills` 命令
-
-### 项目文档（Docs）
-管理项目内的 `docs/` 文件夹，维护结构化的参考文档：
-- 新建、编辑 Markdown 文件，支持实时预览渲染
-- 输入时自动保存（800ms 防抖）
-- 一键生成 `docs/index.json` 摘要索引，可在 `CLAUDE.md` 中引用作为知识库
-
-### Token 用量统计
-读取 Claude Code 在 `~/.claude/projects/` 写入的 JSONL 会话日志，可视化 API 用量：
-- 汇总 token 数（输入、输出、cache 读写）和估算费用
-- 近 30 天每日用量柱状图
-- 按项目拆分，点击展开查看详细数据
-
-### 设置
-直接编辑 `~/.claude/settings.json`，与 Claude Code CLI 共享同一配置：
-- `apiKeyHelper` — 获取 API Key 的 shell 命令，stdout 作为 key 使用
-- `ANTHROPIC_BASE_URL` — 自定义 API 地址或代理
-- 各档位具体 model ID（Sonnet / Opus / Haiku），如 `claude-sonnet-4-6`
-- **通知开关** — 控制 Claude 完成响应时是否发送系统通知
+可视化编辑 `~/.claude.json` 的 `mcpServers` 并在保存前校验。
 
 ---
 
@@ -209,26 +183,6 @@ CC Paw 是标准的 Electron 应用，严格分离进程职责。所有文件系
 ```
 
 所有 IPC channel 名称遵循 `domain:action` 规范（如 `skills:write`、`mcp:read`）。每个 handler 返回统一的结果结构——`{ success: true; data: T }` 或 `{ success: false; error: string }`——由 `src/api/` 层解包，页面直接获得 `data` 或抛出错误。平台差异逻辑（PATH 解析、shell 检测、二进制路径定位）统一收在 `electron/services/platform.ts`。
-
----
-
-## 路线图
-
-以下为方向性设想，**不保证优先级顺序**；欢迎通过 [Issues](https://github.com/HyacinH/cc-paw/issues) 讨论或提交 PR。
-
-- **Linux**：实机验证、CI 覆盖与可复现的安装说明
-- **文档**：面向贡献者的「与 Claude Code 配置文件对应关系」示意图
-- **无障碍**：核心流程的键盘操作与对比度改进
-- **国际化**：除中英文 README 外，界面与文档的更多语言
-- **插件市场**：更强的发现能力（筛选、排序）与更清晰的安装结果反馈
-- **终端体验**：在不干扰 Claude Code 使用习惯的前提下，优化主题与复制粘贴等细节
-- **可选遥测**：仅在社区明确需要且**默认关闭、充分说明隐私**的前提下考虑
-
----
-
-## 参与贡献
-
-详见 [CONTRIBUTING.zh.md](CONTRIBUTING.zh.md)（英文见 [CONTRIBUTING.md](CONTRIBUTING.md)）。缺陷与功能建议请优先通过 [GitHub Issues](https://github.com/HyacinH/cc-paw/issues) 反馈，并尽量附复现步骤。
 
 ---
 

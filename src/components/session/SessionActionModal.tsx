@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { X, Sparkles } from 'lucide-react'
 import type { SessionSnapshot } from '../../types/snapshot.types'
 import { summarizeSession } from '../../api/snapshot'
+import type { CliId } from '../../types/cli.types'
 
 interface SessionActionModalProps {
   mode: 'new-session' | 'restore'
   projectDir: string
+  cliId?: CliId
   snapshot?: SessionSnapshot       // required when mode === 'restore'
   existingSnapshot?: SessionSnapshot  // current session's existing archive, if any
   onConfirm: (saveData: { name: string; description: string } | null) => Promise<void>
@@ -25,7 +27,7 @@ function relativeTime(iso: string): string {
   return `${days} 天前`
 }
 
-export function SessionActionModal({ mode, projectDir, snapshot, existingSnapshot, onConfirm, onCancel }: SessionActionModalProps) {
+export function SessionActionModal({ mode, projectDir, cliId = 'claude', snapshot, existingSnapshot, onConfirm, onCancel }: SessionActionModalProps) {
   const [step, setStep] = useState<Step>(mode === 'restore' ? 'detail' : 'save-choice')
   const [name, setName] = useState(existingSnapshot?.name ?? '')
   const [description, setDescription] = useState(existingSnapshot?.description ?? '')
@@ -37,7 +39,7 @@ export function SessionActionModal({ mode, projectDir, snapshot, existingSnapsho
     setSummarizing(true)
     setError(null)
     try {
-      const summary = await summarizeSession(projectDir)
+      const summary = await summarizeSession(projectDir, cliId)
       setDescription(summary)
     } catch (e) {
       setError(String(e))

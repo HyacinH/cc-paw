@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { MCPConfig } from '../src/types/mcp.types'
 import type { AppSettings } from './ipc/app-settings.handler'
-import type { ClaudeCodeSettingsView } from './ipc/claude-settings.handler'
+import type { CliSettingsView } from './ipc/cli-settings.handler'
 import type { SessionSnapshot } from '../src/types/snapshot.types'
+import type { CliId } from '../src/types/cli.types'
 
 const isWin = process.platform === 'win32'
 const windowsPty = isWin
@@ -17,25 +18,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   windowsPty,
   claudeMd: {
-    readGlobal: () => ipcRenderer.invoke('claude-md:read-global'),
-    writeGlobal: (content: string) => ipcRenderer.invoke('claude-md:write-global', content),
-    readProject: (projectPath: string) => ipcRenderer.invoke('claude-md:read-project', projectPath),
-    writeProject: (projectPath: string, content: string) =>
-      ipcRenderer.invoke('claude-md:write-project', projectPath, content),
+    readGlobal: (cliId?: CliId) => ipcRenderer.invoke('claude-md:read-global', cliId),
+    writeGlobal: (content: string, cliId?: CliId) => ipcRenderer.invoke('claude-md:write-global', content, cliId),
+    readProject: (projectPath: string, cliId?: CliId) => ipcRenderer.invoke('claude-md:read-project', projectPath, cliId),
+    writeProject: (projectPath: string, content: string, cliId?: CliId) =>
+      ipcRenderer.invoke('claude-md:write-project', projectPath, content, cliId),
   },
   skills: {
-    list: () => ipcRenderer.invoke('skills:list'),
-    read: (name: string) => ipcRenderer.invoke('skills:read', name),
-    write: (name: string, content: string) => ipcRenderer.invoke('skills:write', name, content),
-    delete: (name: string) => ipcRenderer.invoke('skills:delete', name),
-    rename: (oldName: string, newName: string) => ipcRenderer.invoke('skills:rename', oldName, newName),
+    list: (cliId?: CliId) => ipcRenderer.invoke('skills:list', cliId),
+    read: (name: string, cliId?: CliId) => ipcRenderer.invoke('skills:read', name, cliId),
+    write: (name: string, content: string, cliId?: CliId) => ipcRenderer.invoke('skills:write', name, content, cliId),
+    delete: (name: string, cliId?: CliId) => ipcRenderer.invoke('skills:delete', name, cliId),
+    rename: (oldName: string, newName: string, cliId?: CliId) => ipcRenderer.invoke('skills:rename', oldName, newName, cliId),
     fetchUrl: (url: string) => ipcRenderer.invoke('skills:fetch-url', url),
     openUrl: (url: string) => ipcRenderer.invoke('skills:open-url', url),
-    listPluginSkills: () => ipcRenderer.invoke('skills:list-plugin-skills'),
+    listPluginSkills: (cliId?: CliId) => ipcRenderer.invoke('skills:list-plugin-skills', cliId),
   },
   mcp: {
-    read: () => ipcRenderer.invoke('mcp:read'),
-    write: (config: MCPConfig) => ipcRenderer.invoke('mcp:write', config),
+    read: (cliId?: CliId) => ipcRenderer.invoke('mcp:read', cliId),
+    write: (config: MCPConfig, cliId?: CliId) => ipcRenderer.invoke('mcp:write', config, cliId),
   },
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),
@@ -44,9 +45,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     read: () => ipcRenderer.invoke('app-settings:read'),
     write: (settings: AppSettings) => ipcRenderer.invoke('app-settings:write', settings),
   },
-  claudeSettings: {
-    read: () => ipcRenderer.invoke('claude-settings:read'),
-    write: (patch: Partial<ClaudeCodeSettingsView>) => ipcRenderer.invoke('claude-settings:write', patch),
+  cliSettings: {
+    read: (cliId?: CliId) => ipcRenderer.invoke('cli-settings:read', cliId),
+    write: (patch: Partial<CliSettingsView>, cliId?: CliId) => ipcRenderer.invoke('cli-settings:write', patch, cliId),
   },
   windowControls: {
     minimize: () => ipcRenderer.invoke('window-controls:minimize'),
@@ -59,31 +60,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     invoke: (commandId: string) => ipcRenderer.invoke('app-menu:invoke', commandId),
   },
   pty: {
-    create: (projectDir: string, newSession: boolean, resumeId?: string) =>
-      ipcRenderer.invoke('pty:create', projectDir, newSession, resumeId),
-    write: (projectDir: string, data: string) => ipcRenderer.invoke('pty:write', projectDir, data),
-    resize: (projectDir: string, cols: number, rows: number) => ipcRenderer.invoke('pty:resize', projectDir, cols, rows),
-    kill: (projectDir: string) => ipcRenderer.invoke('pty:kill', projectDir),
-    getBuffer: (projectDir: string) => ipcRenderer.invoke('pty:get-buffer', projectDir),
-    clearSession: (projectDir: string) => ipcRenderer.invoke('pty:clear-session', projectDir),
-    hasSession: (projectDir: string) => ipcRenderer.invoke('pty:has-session', projectDir),
-    onData: (projectDir: string, callback: (data: string) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, payload: { projectDir: string; data: string }) => {
-        if (payload.projectDir === projectDir) callback(payload.data)
+    create: (projectDir: string, newSession: boolean, resumeId?: string, cliId?: CliId) =>
+      ipcRenderer.invoke('pty:create', projectDir, newSession, resumeId, cliId),
+    write: (projectDir: string, data: string, cliId?: CliId) => ipcRenderer.invoke('pty:write', projectDir, data, cliId),
+    resize: (projectDir: string, cols: number, rows: number, cliId?: CliId) => ipcRenderer.invoke('pty:resize', projectDir, cols, rows, cliId),
+    kill: (projectDir: string, cliId?: CliId) => ipcRenderer.invoke('pty:kill', projectDir, cliId),
+    getBuffer: (projectDir: string, cliId?: CliId) => ipcRenderer.invoke('pty:get-buffer', projectDir, cliId),
+    clearSession: (projectDir: string, cliId?: CliId) => ipcRenderer.invoke('pty:clear-session', projectDir, cliId),
+    hasSession: (projectDir: string, cliId?: CliId) => ipcRenderer.invoke('pty:has-session', projectDir, cliId),
+    onData: (projectDir: string, callback: (data: string) => void, cliId?: CliId) => {
+      const handler = (_e: Electron.IpcRendererEvent, payload: { projectDir: string; data: string; cliId?: CliId }) => {
+        if (payload.projectDir === projectDir && (!cliId || payload.cliId === cliId)) callback(payload.data)
       }
       ipcRenderer.on('pty:data', handler)
       return () => ipcRenderer.removeListener('pty:data', handler)
     },
-    onExit: (projectDir: string, callback: (code: number) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, payload: { projectDir: string; code: number }) => {
-        if (payload.projectDir === projectDir) callback(payload.code)
+    onExit: (projectDir: string, callback: (code: number) => void, cliId?: CliId) => {
+      const handler = (_e: Electron.IpcRendererEvent, payload: { projectDir: string; code: number; cliId?: CliId }) => {
+        if (payload.projectDir === projectDir && (!cliId || payload.cliId === cliId)) callback(payload.code)
       }
       ipcRenderer.on('pty:exit', handler)
       return () => ipcRenderer.removeListener('pty:exit', handler)
     },
-    onPtyState: (callback: (projectDir: string, state: 'running' | 'waiting-input' | 'done' | 'exited') => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, payload: { projectDir: string; state: 'running' | 'waiting-input' | 'done' | 'exited' }) => {
-        callback(payload.projectDir, payload.state)
+    onPtyState: (callback: (projectDir: string, state: 'running' | 'waiting-input' | 'done' | 'exited', cliId?: CliId) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, payload: { projectDir: string; state: 'running' | 'waiting-input' | 'done' | 'exited'; cliId?: CliId }) => {
+        callback(payload.projectDir, payload.state, payload.cliId)
       }
       ipcRenderer.on('pty:state', handler)
       return () => ipcRenderer.removeListener('pty:state', handler)
@@ -109,6 +110,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   shell: {
     run: (command: string) => ipcRenderer.invoke('shell:run', command),
     findClaude: () => ipcRenderer.invoke('shell:find-claude'),
+    findCodex: () => ipcRenderer.invoke('shell:find-codex'),
   },
   plugins: {
     listInstalled: () => ipcRenderer.invoke('plugins:list-installed'),
@@ -121,12 +123,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.send('debug:timing', { scope, label, detail }),
   },
   snapshot: {
-    list: (projectDir: string) => ipcRenderer.invoke('snapshot:list', projectDir),
-    save: (projectDir: string, name: string, description: string) =>
-      ipcRenderer.invoke('snapshot:save', projectDir, name, description),
-    delete: (projectDir: string, snapshotId: string) =>
-      ipcRenderer.invoke('snapshot:delete', projectDir, snapshotId),
-    currentId: (projectDir: string) => ipcRenderer.invoke('snapshot:current-id', projectDir),
-    summarize: (projectDir: string) => ipcRenderer.invoke('snapshot:summarize', projectDir),
+    list: (projectDir: string, cliId?: CliId) => ipcRenderer.invoke('snapshot:list', projectDir, cliId),
+    save: (projectDir: string, name: string, description: string, cliId?: CliId) =>
+      ipcRenderer.invoke('snapshot:save', projectDir, name, description, cliId),
+    delete: (projectDir: string, snapshotId: string, cliId?: CliId) =>
+      ipcRenderer.invoke('snapshot:delete', projectDir, snapshotId, cliId),
+    currentId: (projectDir: string, cliId?: CliId) => ipcRenderer.invoke('snapshot:current-id', projectDir, cliId),
+    summarize: (projectDir: string, cliId?: CliId) => ipcRenderer.invoke('snapshot:summarize', projectDir, cliId),
   },
 })

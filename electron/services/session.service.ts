@@ -1,8 +1,10 @@
 import { app } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
+import type { CliId } from '../../src/types/cli.types'
+import { DEFAULT_CLI_ID, toScopeKey } from './cli-scope'
 
-// PTY session 标记：记录每个项目是否有可续接的历史 session
+// PTY session marker: whether a project has a resumable session per CLI scope.
 type PtySessionStore = Record<string, boolean>
 
 function ptySessionsPath(): string {
@@ -22,19 +24,19 @@ async function savePtySessions(store: PtySessionStore): Promise<void> {
   await fs.writeFile(ptySessionsPath(), JSON.stringify(store, null, 2), 'utf-8')
 }
 
-export async function hasPreviousSession(projectDir: string): Promise<boolean> {
+export async function hasPreviousSession(projectDir: string, cliId: CliId = DEFAULT_CLI_ID): Promise<boolean> {
   const store = await loadPtySessions()
-  return store[projectDir] === true
+  return store[toScopeKey(projectDir, cliId)] === true
 }
 
-export async function markSessionExists(projectDir: string): Promise<void> {
+export async function markSessionExists(projectDir: string, cliId: CliId = DEFAULT_CLI_ID): Promise<void> {
   const store = await loadPtySessions()
-  store[projectDir] = true
+  store[toScopeKey(projectDir, cliId)] = true
   await savePtySessions(store)
 }
 
-export async function clearPtySession(projectDir: string): Promise<void> {
+export async function clearPtySession(projectDir: string, cliId: CliId = DEFAULT_CLI_ID): Promise<void> {
   const store = await loadPtySessions()
-  delete store[projectDir]
+  delete store[toScopeKey(projectDir, cliId)]
   await savePtySessions(store)
 }

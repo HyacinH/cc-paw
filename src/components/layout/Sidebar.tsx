@@ -9,6 +9,7 @@ import { clsx } from 'clsx'
 import { useAppSettingsStore } from '../../store/appSettings.store'
 import { useThemeStore } from '../../store/theme.store'
 import { usePtyStore, type PtySessionState } from '../../store/pty.store'
+import { toScopeKey, DEFAULT_CLI_ID } from '../../types/cli.types'
 
 // 根据项目名称生成确定性颜色
 const AVATAR_COLORS = [
@@ -107,11 +108,13 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export default function Sidebar({ open }: { open: boolean }) {
-  const { projects, loaded, load, addProject } = useAppSettingsStore()
+  const { projects, loaded, load, addProject, defaultCli } = useAppSettingsStore()
   const { theme, toggle } = useThemeStore()
   const { states: ptyStates } = usePtyStore()
   const navigate = useNavigate()
   const location = useLocation()
+  const activeCli = defaultCli ?? DEFAULT_CLI_ID
+  const showClaudeOnly = activeCli === 'claude'
 
   useEffect(() => { load() }, [load])
 
@@ -142,7 +145,7 @@ export default function Sidebar({ open }: { open: boolean }) {
             <NavItem to="/" icon={FileText} label="设定" end />
             <NavItem to="/skills" icon={Zap} label="Skills" />
             <NavItem to="/mcp" icon={Server} label="MCP" />
-            <NavItem to="/plugins" icon={Package} label="插件" />
+            {showClaudeOnly && <NavItem to="/plugins" icon={Package} label="插件" />}
             <NavItem to="/usage" icon={BarChart2} label="用量" />
 
             <SectionLabel>项目</SectionLabel>
@@ -168,7 +171,7 @@ export default function Sidebar({ open }: { open: boolean }) {
                     }
                     title={name}
                   >
-                    <ProjectAvatar name={name} size="sm" ptyState={ptyStates[entry.dir]} />
+                    <ProjectAvatar name={name} size="sm" ptyState={ptyStates[toScopeKey(entry.dir, defaultCli)]} />
                     <span className="flex-1 truncate">{name}</span>
                   </NavLink>
 
@@ -243,7 +246,7 @@ export default function Sidebar({ open }: { open: boolean }) {
           <IconNavItem to="/" icon={FileText} label="设定" end />
           <IconNavItem to="/skills" icon={Zap} label="Skills" />
           <IconNavItem to="/mcp" icon={Server} label="MCP" />
-          <IconNavItem to="/plugins" icon={Package} label="插件" />
+          {showClaudeOnly && <IconNavItem to="/plugins" icon={Package} label="插件" />}
           <IconNavItem to="/usage" icon={BarChart2} label="用量" />
 
           <div className="w-6 border-t border-[#e2d9c8] dark:border-gray-700 my-1" />
@@ -263,7 +266,7 @@ export default function Sidebar({ open }: { open: boolean }) {
                   )
                 }
               >
-                <ProjectAvatar name={name} size="lg" ptyState={ptyStates[entry.dir]} />
+                <ProjectAvatar name={name} size="lg" ptyState={ptyStates[toScopeKey(entry.dir, defaultCli)]} />
               </NavLink>
             )
           })}

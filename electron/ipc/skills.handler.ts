@@ -1,8 +1,11 @@
 import { ipcMain, shell } from 'electron'
 import fs from 'fs/promises'
 import path from 'path'
+import os from 'os'
 import { CLAUDE_PATHS } from '../services/claude-paths'
 import { readFile, writeFile, deleteFile, listDir } from '../services/file.service'
+import { normalizeCliId } from '../services/cli-scope'
+import type { CliId } from '../../src/types/cli.types'
 
 export interface PluginSkillEntry {
   skillName: string
@@ -30,9 +33,25 @@ function parseFrontmatter(content: string): Record<string, string> {
   return result
 }
 
+function resolveSkillsPaths(cliId?: CliId): { skillsDir: string; pluginsInstalledJson: string } {
+  const effectiveCliId = normalizeCliId(cliId)
+  if (effectiveCliId === 'codex') {
+    const codexDir = path.join(os.homedir(), '.codex')
+    return {
+      skillsDir: path.join(codexDir, 'skills'),
+      pluginsInstalledJson: path.join(codexDir, 'plugins', 'installed_plugins.json'),
+    }
+  }
+  return {
+    skillsDir: CLAUDE_PATHS.skillsDir,
+    pluginsInstalledJson: CLAUDE_PATHS.pluginsInstalledJson,
+  }
+}
+
 export function registerSkillsHandlers(): void {
-  ipcMain.handle('skills:list', async () => {
-    const result = await listDir(CLAUDE_PATHS.skillsDir)
+  ipcMain.handle('skills:list', async (_event, cliId?: CliId) => {
+    const { skillsDir } = resolveSkillsPaths(cliId)
+    const result = await listDir(skillsDir)
     if (!result.success) return result
     const skills = result.data
       .filter((f) => f.endsWith('.md'))
@@ -40,22 +59,26 @@ export function registerSkillsHandlers(): void {
     return { success: true, data: skills }
   })
 
-  ipcMain.handle('skills:read', (_event, name: string) =>
-    readFile(path.join(CLAUDE_PATHS.skillsDir, `${name}.md`))
-  )
+  ipcMain.handle('skills:read', (_event, name: string, cliId?: CliId) => {
+    const { skillsDir } = resolveSkillsPaths(cliId)
+    return readFile(path.join(skillsDir, `${name}.md`))
+  })
 
-  ipcMain.handle('skills:write', (_event, name: string, content: string) =>
-    writeFile(path.join(CLAUDE_PATHS.skillsDir, `${name}.md`), content)
-  )
+  ipcMain.handle('skills:write', (_event, name: string, content: string, cliId?: CliId) => {
+    const { skillsDir } = resolveSkillsPaths(cliId)
+    return writeFile(path.join(skillsDir, `${name}.md`), content)
+  })
 
-  ipcMain.handle('skills:delete', (_event, name: string) =>
-    deleteFile(path.join(CLAUDE_PATHS.skillsDir, `${name}.md`))
-  )
+  ipcMain.handle('skills:delete', (_event, name: string, cliId?: CliId) => {
+    const { skillsDir } = resolveSkillsPaths(cliId)
+    return deleteFile(path.join(skillsDir, `${name}.md`))
+  })
 
-  ipcMain.handle('skills:rename', async (_event, oldName: string, newName: string) => {
+  ipcMain.handle('skills:rename', async (_event, oldName: string, newName: string, cliId?: CliId) => {
+    const { skillsDir } = resolveSkillsPaths(cliId)
     try {
-      const oldPath = path.join(CLAUDE_PATHS.skillsDir, `${oldName}.md`)
-      const newPath = path.join(CLAUDE_PATHS.skillsDir, `${newName}.md`)
+      const oldPath = path.join(skillsDir, `${oldName}.md`)
+      const newPath = path.join(skillsDir, `${newName}.md`)
       await fs.rename(oldPath, newPath)
       return { success: true, data: undefined }
     } catch (err) {
@@ -83,9 +106,10 @@ export function registerSkillsHandlers(): void {
   })
 
   // 读取所有已安装插件的 Skills
-  ipcMain.handle('skills:list-plugin-skills', async () => {
+  ipcMain.handle('skills:list-plugin-skills', async (_event, cliId?: CliId) => {
+    const { pluginsInstalledJson } = resolveSkillsPaths(cliId)
     try {
-      const raw = await fs.readFile(CLAUDE_PATHS.pluginsInstalledJson, 'utf-8')
+      const raw = await fs.readFile(pluginsInstalledJson, 'utf-8')
       const installed = JSON.parse(raw) as {
         version: number
         plugins: Record<string, { scope: string; installPath: string; version: string }[]>

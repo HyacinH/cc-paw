@@ -1,6 +1,7 @@
 import { ipcMain, app } from 'electron'
 import path from 'path'
 import { readFile, writeFile } from '../services/file.service'
+import type { CliId } from '../../src/types/cli.types'
 
 export interface ProjectEntry {
   dir: string
@@ -12,21 +13,24 @@ export interface AppSettings {
   apiKey?: string
   baseUrl?: string
   model?: string
-  notifyOnDone?: boolean  // default true — notify when Claude finishes responding
+  notifyOnDone?: boolean
+  defaultCli?: CliId
 }
 
 function settingsPath(): string {
   return path.join(app.getPath('userData'), 'app-settings.json')
 }
 
-/** Called from pty.handler — reads notifyOnDone directly to avoid circular IPC */
+/** Called from pty.handler and reads notifyOnDone directly to avoid circular IPC. */
 export async function getNotifyOnDone(): Promise<boolean> {
   const result = await readFile(settingsPath())
   if (!result.success || !result.data) return true
   try {
     const s = JSON.parse(result.data) as AppSettings
-    return s.notifyOnDone !== false  // default true when absent
-  } catch { return true }
+    return s.notifyOnDone !== false
+  } catch {
+    return true
+  }
 }
 
 export function registerAppSettingsHandlers(): void {

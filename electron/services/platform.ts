@@ -52,31 +52,16 @@ export function getShellEnv(): NodeJS.ProcessEnv {
   return _shellEnv
 }
 
-/**
- * 在已解析的环境变量中定位 claude 可执行文件路径。
- * 先检查常见固定路径，找不到再回落到 which / where。
- */
-export function findClaude(): string {
+function findCommand(command: string, windowsCandidates: string[], unixCandidates: string[]): string {
   const env = _shellEnv
 
-  const candidates = isWin
-    ? [
-        path.join(process.env.APPDATA ?? '', 'npm', 'claude.cmd'),
-        path.join(process.env.APPDATA ?? '', 'npm', 'claude'),
-        `${os.homedir()}/.claude/local/claude.cmd`,
-      ]
-    : [
-        '/usr/local/bin/claude',
-        '/opt/homebrew/bin/claude',
-        `${os.homedir()}/.claude/local/claude`,
-      ]
-
+  const candidates = isWin ? windowsCandidates : unixCandidates
   for (const c of candidates) {
     if (existsSync(c)) return c
   }
 
   try {
-    const r = spawnSync(isWin ? 'where' : 'which', ['claude'], {
+    const r = spawnSync(isWin ? 'where' : 'which', [command], {
       encoding: 'utf8',
       env: env as Record<string, string>,
       timeout: 3000,
@@ -88,5 +73,43 @@ export function findClaude(): string {
     }
   } catch { /* ignore */ }
 
-  return 'claude'
+  return command
+}
+
+/**
+ * 在已解析的环境变量中定位 claude 可执行文件路径。
+ * 先检查常见固定路径，找不到再回落到 which / where。
+ */
+export function findClaude(): string {
+  return findCommand(
+    'claude',
+    [
+      path.join(process.env.APPDATA ?? '', 'npm', 'claude.cmd'),
+      path.join(process.env.APPDATA ?? '', 'npm', 'claude'),
+      `${os.homedir()}/.claude/local/claude.cmd`,
+    ],
+    [
+      '/usr/local/bin/claude',
+      '/opt/homebrew/bin/claude',
+      `${os.homedir()}/.claude/local/claude`,
+    ]
+  )
+}
+
+/**
+ * 在已解析的环境变量中定位 codex 可执行文件路径。
+ * 先检查常见固定路径，找不到再回落到 which / where。
+ */
+export function findCodex(): string {
+  return findCommand(
+    'codex',
+    [
+      path.join(process.env.APPDATA ?? '', 'npm', 'codex.cmd'),
+      path.join(process.env.APPDATA ?? '', 'npm', 'codex'),
+    ],
+    [
+      '/usr/local/bin/codex',
+      '/opt/homebrew/bin/codex',
+    ]
+  )
 }

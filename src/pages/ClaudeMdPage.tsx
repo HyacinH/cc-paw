@@ -5,9 +5,15 @@ import remarkGfm from 'remark-gfm'
 import { Save, AlertCircle, Eye, Pencil } from 'lucide-react'
 import { readGlobalClaudeMd, writeGlobalClaudeMd } from '../api/claudeMd'
 import { useMonacoTheme } from '../hooks/useMonacoTheme'
+import { useAppSettingsStore } from '../store/appSettings.store'
+import { DEFAULT_CLI_ID } from '../types/cli.types'
 
 export default function ClaudeMdPage() {
   const monacoTheme = useMonacoTheme()
+  const { defaultCli } = useAppSettingsStore()
+  const activeCli = defaultCli ?? DEFAULT_CLI_ID
+  const instructionPath = activeCli === 'codex' ? '~/.codex/AGENTS.md' : '~/.claude/CLAUDE.md'
+  const cliName = activeCli === 'codex' ? 'Codex' : 'Claude Code'
   const [content, setContent] = useState<string | null>(null) // null = loading
   const [editContent, setEditContent] = useState('')
   const [isEditing, setIsEditing] = useState(false)
@@ -17,15 +23,15 @@ export default function ClaudeMdPage() {
 
   useEffect(() => {
     setContent(null)
-    readGlobalClaudeMd()
+    readGlobalClaudeMd(activeCli)
       .then((c) => { setContent(c ?? ''); setEditContent(c ?? '') })
       .catch((e) => { setError(String(e)); setContent(''); setEditContent('') })
-  }, [])
+  }, [activeCli])
 
   const handleSave = useCallback(async () => {
     setSaving(true); setError(null); setSavedOk(false)
     try {
-      await writeGlobalClaudeMd(editContent)
+      await writeGlobalClaudeMd(editContent, activeCli)
       setContent(editContent)
       setSavedOk(true)
       setTimeout(() => setSavedOk(false), 2000)
@@ -34,7 +40,7 @@ export default function ClaudeMdPage() {
     } finally {
       setSaving(false)
     }
-  }, [editContent])
+  }, [editContent, activeCli])
 
   return (
     <div className="flex flex-col h-full">
@@ -42,7 +48,11 @@ export default function ClaudeMdPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">设定</h1>
-            <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 font-mono">~/.claude/CLAUDE.md</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
+              当前 CLI：
+              <span className="inline-flex items-center rounded-md border border-orange-500/40 bg-orange-500/10 px-1.5 py-0.5 ml-1 text-[11px] text-orange-600 dark:text-orange-400 font-medium">{cliName}</span>
+            </p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 font-mono">{instructionPath}</p>
           </div>
           <div className="flex items-center gap-3">
             {/* 编辑/预览切换 */}

@@ -14,10 +14,11 @@ import type { SessionSnapshot } from '../types/snapshot.types'
 import { listSnapshots, saveSnapshot, deleteSnapshot, getCurrentSessionId, getCurrentSession } from '../api/snapshot'
 import { SessionActionModal } from '../components/session/SessionActionModal'
 import { SnapshotDropdown } from '../components/session/SnapshotDropdown'
-
-// ─── CLAUDE.md panel ──────────────────────────────────────────────────────────
+import { DEFAULT_CLI_ID } from '../types/cli.types'
 
 export function ClaudeMdPanel({ projectDir }: { projectDir: string }) {
+  const { defaultCli } = useAppSettingsStore()
+  const activeCli = defaultCli ?? DEFAULT_CLI_ID
   const monacoTheme = useMonacoTheme()
   const [content, setContent] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
@@ -28,23 +29,22 @@ export function ClaudeMdPanel({ projectDir }: { projectDir: string }) {
 
   useEffect(() => {
     setContent(null); setIsEditing(false)
-    readProjectClaudeMd(projectDir).then((c) => { setContent(c ?? ''); setEditContent(c ?? '') }).catch(() => {})
-  }, [projectDir])
+    readProjectClaudeMd(projectDir, activeCli).then((c) => { setContent(c ?? ''); setEditContent(c ?? '') }).catch(() => {})
+  }, [projectDir, activeCli])
 
   const handleSave = useCallback(async () => {
     setSaving(true); setError(null); setSavedOk(false)
     try {
-      await writeProjectClaudeMd(projectDir, editContent)
+      await writeProjectClaudeMd(projectDir, editContent, activeCli)
       setContent(editContent)
       setSavedOk(true)
       setTimeout(() => setSavedOk(false), 2000)
     } catch (e) { setError(String(e)) } finally { setSaving(false) }
-  }, [projectDir, editContent])
+  }, [projectDir, editContent, activeCli])
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        {/* 编辑/预览切换 */}
         <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-md p-0.5">
           <button
             onClick={() => setIsEditing(false)}
@@ -382,9 +382,11 @@ export default function ProjectPage() {
   const projectDir = useProjectDir()
   const projectName = projectDir.split(/[/\\]/).pop() ?? projectDir
   const navigate = useNavigate()
-  const { projects, removeProject, setAlias, load: loadSettings } = useAppSettingsStore()
+  const { projects, defaultCli, removeProject, setAlias, load: loadSettings } = useAppSettingsStore()
   const currentEntry = projects.find((p) => p.dir === projectDir)
   const alias = currentEntry?.alias
+  const projectCliId = defaultCli ?? DEFAULT_CLI_ID
+  const supportsSnapshots = projectCliId === 'claude' || projectCliId === 'codex'
   const displayName = alias ?? projectName
 
   const [editingAlias, setEditingAlias] = useState(false)
@@ -421,9 +423,6 @@ export default function ProjectPage() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [snapshots, setSnapshots] = useState<SessionSnapshot[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
-  const currentSessionIdRef = useRef<string | null>(null)
-  // Keep ref in sync so handleModalConfirm can read the latest value without being in deps
-  useEffect(() => { currentSessionIdRef.current = currentSessionId }, [currentSessionId])
 
   // Route param changes reuse the same component instance, so reset per-project
   // session-control state to avoid carrying "new/restore" intent across projects.
@@ -434,20 +433,19 @@ export default function ProjectPage() {
     setShowDropdown(false)
     setSnapshots([])
     setCurrentSessionId(null)
-    currentSessionIdRef.current = null
-  }, [projectDir])
+  }, [projectDir, projectCliId])
 
   useEffect(() => { loadSettings() }, [loadSettings])
 
   const loadSnapshots = useCallback(async () => {
     if (!projectDir) return
     const [list, sessionId] = await Promise.all([
-      listSnapshots(projectDir).catch(() => [] as SessionSnapshot[]),
-      getCurrentSessionId(projectDir).catch(() => null),
+      listSnapshots(projectDir, projectCliId).catch(() => [] as SessionSnapshot[]),
+      getCurrentSessionId(projectDir, projectCliId).catch(() => null),
     ])
     setSnapshots(list)
     setCurrentSessionId(sessionId)
-  }, [projectDir])
+  }, [projectDir, projectCliId])
 
   useEffect(() => {
     loadSnapshots()
@@ -466,7 +464,7 @@ export default function ProjectPage() {
       if (cancelled) return
       if (attempts++ >= 12) return
 
-      const id = await getCurrentSessionId(projectDir).catch(() => null)
+      const id = await getCurrentSessionId(projectDir, projectCliId).catch(() => null)
       if (cancelled) return
 
       if (id) {
@@ -484,7 +482,7 @@ export default function ProjectPage() {
       cancelled = true
       if (timer) clearTimeout(timer)
     }
-  }, [projectDir, currentSessionId, loadSnapshots])
+  }, [projectDir, projectCliId, currentSessionId, loadSnapshots])
 
   // Shared logic: optionally save snapshot, kill session, start new or resume
   const handleModalConfirm = useCallback(
@@ -506,12 +504,12 @@ export default function ProjectPage() {
       if (!projectDir) return
       log('modal confirm begin', { hasSaveData: !!saveData, nextResumeId })
       if (saveData) {
-        await saveSnapshot(projectDir, saveData.name, saveData.description)
+        await saveSnapshot(projectDir, saveData.name, saveData.description, projectCliId)
         log('saveSnapshot done')
         await loadSnapshots()
         log('loadSnapshots after save done')
       }
-      await window.electronAPI.pty.kill(projectDir)
+      await window.electronAPI.pty.kill(projectDir, projectCliId)
       log('pty.kill done')
       if (nextResumeId) {
         // Restore: session ID is known immediately
@@ -519,11 +517,8 @@ export default function ProjectPage() {
         log('restore setCurrentSessionId')
       } else {
         // New session: clear stale name right away, then poll for any available current ID.
-        // Requiring id !== prevId can stall for seconds when Claude keeps writing into
-        // the same JSONL file on startup.
-        await window.electronAPI.pty.clearSession(projectDir)
+        await window.electronAPI.pty.clearSession(projectDir, projectCliId)
         log('pty.clearSession done')
-        const prevId = currentSessionIdRef.current
         setCurrentSessionId(null)
         let attempts = 0
         const poll = async () => {
@@ -532,11 +527,11 @@ export default function ProjectPage() {
             return
           }
           try {
-      const current = await getCurrentSession(projectDir)
-      log('new-session id poll tick', { attempts, id: current.id, source: current.source, prevId })
-      if (current.id && current.id !== prevId) {
+      const current = await getCurrentSession(projectDir, projectCliId)
+      log('new-session id poll tick', { attempts, id: current.id, source: current.source })
+      if (current.id) {
         setCurrentSessionId(current.id)
-        log('new-session id updated', { id: current.id, source: current.source, changed: true })
+        log('new-session id updated', { id: current.id, source: current.source })
         return
       }
           } catch {
@@ -551,16 +546,16 @@ export default function ProjectPage() {
       setModal(null)
       log('modal confirm end')
     },
-    [projectDir, loadSnapshots]
+    [projectDir, projectCliId, loadSnapshots]
   )
 
   const handleDeleteSnapshot = useCallback(
     async (snapshot: SessionSnapshot) => {
       if (!projectDir) return
-      await deleteSnapshot(projectDir, snapshot.id).catch(() => {})
+      await deleteSnapshot(projectDir, snapshot.id, projectCliId).catch(() => {})
       await loadSnapshots()
     },
-    [projectDir, loadSnapshots]
+    [projectDir, projectCliId, loadSnapshots]
   )
 
   const handleCloseDropdown = useCallback(() => setShowDropdown(false), [])
@@ -571,7 +566,7 @@ export default function ProjectPage() {
 
   const handleRemove = async () => {
     if (!confirm(`从列表中移除项目 "${displayName}"？\n（不会删除本地文件）`)) return
-    await window.electronAPI.pty.kill(projectDir)
+    await window.electronAPI.pty.kill(projectDir, projectCliId)
     await removeProject(projectDir)
     navigate('/')
   }
@@ -612,34 +607,43 @@ export default function ProjectPage() {
           <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{projectDir}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+
           {/* 会话存档 dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => {
-                loadSnapshots()
-                setShowDropdown((v) => !v)
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded-md transition-colors"
-              title="查看会话存档"
-            >
-              会话存档 ▾
-            </button>
-            {showDropdown && (
-              <SnapshotDropdown
-                snapshots={snapshots}
-                currentSessionId={currentSessionId ?? undefined}
-                onRestore={(s) => { setShowDropdown(false); setModal({ type: 'restore', snapshot: s }) }}
-                onDelete={handleDeleteSnapshot}
-                onClose={handleCloseDropdown}
-              />
-            )}
-          </div>
+          {supportsSnapshots && (
+            <div className="relative">
+              <button
+                onClick={() => {
+                  loadSnapshots()
+                  setShowDropdown((v) => !v)
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded-md transition-colors"
+                title="查看会话存档"
+              >
+                会话存档 ▾
+              </button>
+              {showDropdown && (
+                <SnapshotDropdown
+                  snapshots={snapshots}
+                  currentSessionId={currentSessionId ?? undefined}
+                  onRestore={(s) => { setShowDropdown(false); setModal({ type: 'restore', snapshot: s }) }}
+                  onDelete={handleDeleteSnapshot}
+                  onClose={handleCloseDropdown}
+                />
+              )}
+            </div>
+          )}
 
           {/* 新会话 */}
           <button
-            onClick={() => setModal({ type: 'new-session' })}
+            onClick={() => {
+              if (supportsSnapshots) {
+                setModal({ type: 'new-session' })
+                return
+              }
+              void handleModalConfirm(null, undefined)
+            }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-orange-400 hover:bg-orange-400/10 rounded-md transition-colors"
-            title="开始新会话"
+            title={supportsSnapshots ? '开始新会话' : '重启当前会话'}
           >
             <RotateCcw size={12} />
             新会话
@@ -659,10 +663,11 @@ export default function ProjectPage() {
       {/* Terminal */}
       <div className="flex-1 overflow-hidden bg-[#faf6ef] dark:bg-[#030712]">
         <TerminalPanel
-          key={`${projectDir}-${sessionKey}`}
+          key={`${projectDir}-${projectCliId}-${sessionKey}`}
           projectDir={projectDir}
           newSession={sessionKey > 0 && !resumeId}
           resumeId={resumeId}
+          cliId={projectCliId}
         />
       </div>
 
@@ -671,6 +676,7 @@ export default function ProjectPage() {
         <SessionActionModal
           mode="new-session"
           projectDir={projectDir}
+          cliId={projectCliId}
           existingSnapshot={currentSnapshot ?? undefined}
           onConfirm={(saveData) => handleModalConfirm(saveData, undefined)}
           onCancel={() => setModal(null)}
@@ -680,6 +686,7 @@ export default function ProjectPage() {
         <SessionActionModal
           mode="restore"
           projectDir={projectDir}
+          cliId={projectCliId}
           snapshot={modal.snapshot}
           existingSnapshot={currentSnapshot ?? undefined}
           onConfirm={(saveData) => handleModalConfirm(saveData, modal.snapshot.id)}

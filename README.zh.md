@@ -44,8 +44,15 @@ sudo xattr -rd com.apple.quarantine "/Applications/CC Paw.app"
 - **项目管理：** 支持项目命名、侧边栏快速切换，以及按项目状态实时标记。
 - **项目文档（Docs）：** 在 `docs/` 内编辑 Markdown，实时预览并自动保存。
 - **项目设定：** 直接在界面编辑共享 CLI 配置（`~/.claude/settings.json`、`~/.codex/config.toml`）。
+- **CLI 运行时切换：** 可在 Settings 中选择 Claude Code 或 Codex，控制当前会话运行时与配置作用域。
 
 ![项目工作区：会话、文档与设定](resources/images/image_project.png)
+
+### Settings 中切换 CLI
+
+你可以在 Settings 页面选择当前激活的 CLI 运行时（Claude Code 或 Codex）。该选择会决定项目会话使用的终端环境与配置作用域。
+
+![Settings：切换激活 CLI 运行时](resources/images/image_settings.png)
 
 ### 插件市场
 

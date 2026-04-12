@@ -44,8 +44,15 @@ Core project-facing workflows are centralized in one workspace (screenshot below
 - **Project organization:** rename projects, switch quickly in the sidebar, and track state with per-project status indicators.
 - **Project Docs (`docs/`):** edit Markdown with live preview and autosave, then keep project references in one place.
 - **Project settings:** edit shared CLI settings (`~/.claude/settings.json`, `~/.codex/config.toml`) directly from the UI.
+- **CLI runtime switching:** choose Claude Code or Codex in Settings to control active session runtime and config scope.
 
 ![Project workspace: sessions, docs, and settings](resources/images/image_project.png)
+
+### CLI switching in Settings
+
+Use the Settings page to choose the active CLI runtime (Claude Code or Codex). This controls which terminal environment and configuration scope are applied in project sessions.
+
+![Settings: switch active CLI runtime](resources/images/image_settings.png)
 
 ### Plugin marketplace
 

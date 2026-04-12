@@ -137,14 +137,20 @@ function sendNotification(
   ptyLog('notify:sent', projectDir, { title })
 }
 
+function cliLabel(cliId?: string): string {
+  return normalizeCliId(cliId) === 'codex' ? 'Codex' : 'Claude'
+}
+
 function maybeNotify(projectDir: string, getMainWindow: () => BrowserWindow | null, cliId: string = DEFAULT_CLI_ID): void {
   const projectName = path.basename(projectDir)
-  sendNotification(projectDir, `${projectName} — Action Required`, 'Claude is waiting for your input. Click to respond.', getMainWindow, cliId)
+  const label = cliLabel(cliId)
+  sendNotification(projectDir, `${projectName} — Action Required`, `${label} is waiting for your input. Click to respond.`, getMainWindow, cliId)
 }
 
 function maybeNotifyDone(projectDir: string, getMainWindow: () => BrowserWindow | null, cliId: string = DEFAULT_CLI_ID): void {
   const projectName = path.basename(projectDir)
-  sendNotification(projectDir, `${projectName} — Done`, 'Claude has finished responding.', getMainWindow, cliId)
+  const label = cliLabel(cliId)
+  sendNotification(projectDir, `${projectName} — Done`, `${label} has finished responding.`, getMainWindow, cliId)
 }
 
 function scheduleDone(

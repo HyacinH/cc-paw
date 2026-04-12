@@ -87,24 +87,77 @@ function renderTomlStringArray(values: string[]): string {
   return `[${values.map((v) => `"${escapeTomlString(v)}"`).join(', ')}]`
 }
 
-function stripManagedCodexMcpSections(content: string): string {
+type TomlBlock = {
+  header: string | null
+  pathParts: string[] | null
+  lines: string[]
+}
+
+type ManagedBucket = 'active' | 'disabled'
+
+function parseTomlBlocks(content: string): TomlBlock[] {
   const lines = content.split('\n')
-  const out: string[] = []
-  let skip = false
+  const blocks: TomlBlock[] = []
+  let current: TomlBlock = { header: null, pathParts: null, lines: [] }
 
   for (const line of lines) {
     const header = line.match(/^\s*\[(.+?)\]\s*$/)?.[1]?.trim()
     if (header) {
-      const pathParts = splitTomlPath(header)
-      const managed = pathParts[0] === 'mcp_servers' || pathParts[0] === CODEX_DISABLED_SECTION
-      skip = managed
-      if (!skip) out.push(line)
+      if (current.lines.length > 0 || current.header !== null) {
+        blocks.push(current)
+      }
+      current = { header, pathParts: splitTomlPath(header), lines: [line] }
       continue
     }
-    if (!skip) out.push(line)
+    current.lines.push(line)
   }
 
-  return out.join('\n').trimEnd()
+  if (current.lines.length > 0 || current.header !== null) {
+    blocks.push(current)
+  }
+
+  return blocks
+}
+
+function getManagedBlockMeta(block: TomlBlock): { bucket: ManagedBucket; name: string } | null {
+  const p = block.pathParts
+  if (!p || p.length < 2) return null
+  if (p[0] === 'mcp_servers') return { bucket: 'active', name: p[1] }
+  if (p[0] === CODEX_DISABLED_SECTION) return { bucket: 'disabled', name: p[1] }
+  return null
+}
+
+function blockToText(block: TomlBlock): string {
+  return block.lines.join('\n')
+}
+
+function sortRecord(input: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!input || Object.keys(input).length === 0) return undefined
+  const next: Record<string, string> = {}
+  for (const key of Object.keys(input).sort()) {
+    next[key] = input[key]
+  }
+  return next
+}
+
+function normalizeServerForCompare(srv: MCPServerConfig | undefined): Record<string, unknown> | null {
+  if (!srv) return null
+  const out: Record<string, unknown> = {
+    disabled: srv.disabled === true,
+  }
+  if (srv.url) out.url = srv.url
+  if (srv.command) out.command = srv.command
+  if (srv.type) out.type = srv.type
+  if (srv.args && srv.args.length > 0) out.args = [...srv.args]
+  const env = sortRecord(srv.env)
+  if (env) out.env = env
+  const headers = sortRecord(srv.headers)
+  if (headers) out.headers = headers
+  return out
+}
+
+function isSameManagedServer(nextSrv: MCPServerConfig | undefined, prevSrv: MCPServerConfig | undefined): boolean {
+  return JSON.stringify(normalizeServerForCompare(nextSrv)) === JSON.stringify(normalizeServerForCompare(prevSrv))
 }
 
 function parseCodexMcpFromToml(content: string): MCPConfig {
@@ -195,50 +248,31 @@ function parseCodexMcpFromToml(content: string): MCPConfig {
   return { mcpServers: merged }
 }
 
-function renderCodexMcpSections(config: MCPConfig): string {
-  const active: Record<string, MCPServerConfig> = {}
-  const disabled: Record<string, MCPServerConfig> = {}
-
-  for (const [name, srv] of Object.entries(config.mcpServers ?? {})) {
-    const { disabled: isDisabled, ...rest } = srv
-    if (isDisabled) disabled[name] = rest
-    else active[name] = rest
-  }
-
+function renderCodexServerSections(bucket: ManagedBucket, name: string, srv: MCPServerConfig): string {
+  const sectionPrefix = bucket === 'active' ? 'mcp_servers' : CODEX_DISABLED_SECTION
   const lines: string[] = []
 
-  const pushServer = (sectionPrefix: string, name: string, srv: MCPServerConfig) => {
-    lines.push(`[${sectionPrefix}.${formatTomlKey(name)}]`)
+  lines.push(`[${sectionPrefix}.${formatTomlKey(name)}]`)
 
-    if (srv.url) lines.push(`url = "${escapeTomlString(srv.url)}"`)
-    if (srv.command) lines.push(`command = "${escapeTomlString(srv.command)}"`)
-    if (srv.type && srv.type !== 'stdio') lines.push(`type = "${escapeTomlString(srv.type)}"`)
-    if (srv.args && srv.args.length > 0) lines.push(`args = ${renderTomlStringArray(srv.args)}`)
+  if (srv.url) lines.push(`url = "${escapeTomlString(srv.url)}"`)
+  if (srv.command) lines.push(`command = "${escapeTomlString(srv.command)}"`)
+  if (srv.type && srv.type !== 'stdio') lines.push(`type = "${escapeTomlString(srv.type)}"`)
+  if (srv.args && srv.args.length > 0) lines.push(`args = ${renderTomlStringArray(srv.args)}`)
 
-    if (srv.env && Object.keys(srv.env).length > 0) {
-      lines.push('')
-      lines.push(`[${sectionPrefix}.${formatTomlKey(name)}.env]`)
-      for (const [k, v] of Object.entries(srv.env)) {
-        lines.push(`${formatTomlKey(k)} = "${escapeTomlString(v)}"`)
-      }
-    }
-
-    if (srv.headers && Object.keys(srv.headers).length > 0) {
-      lines.push('')
-      lines.push(`[${sectionPrefix}.${formatTomlKey(name)}.headers]`)
-      for (const [k, v] of Object.entries(srv.headers)) {
-        lines.push(`${formatTomlKey(k)} = "${escapeTomlString(v)}"`)
-      }
-    }
-
+  if (srv.env && Object.keys(srv.env).length > 0) {
     lines.push('')
+    lines.push(`[${sectionPrefix}.${formatTomlKey(name)}.env]`)
+    for (const [k, v] of Object.entries(srv.env)) {
+      lines.push(`${formatTomlKey(k)} = "${escapeTomlString(v)}"`)
+    }
   }
 
-  for (const name of Object.keys(active).sort()) {
-    pushServer('mcp_servers', name, active[name])
-  }
-  for (const name of Object.keys(disabled).sort()) {
-    pushServer(CODEX_DISABLED_SECTION, name, disabled[name])
+  if (srv.headers && Object.keys(srv.headers).length > 0) {
+    lines.push('')
+    lines.push(`[${sectionPrefix}.${formatTomlKey(name)}.headers]`)
+    for (const [k, v] of Object.entries(srv.headers)) {
+      lines.push(`${formatTomlKey(k)} = "${escapeTomlString(v)}"`)
+    }
   }
 
   return lines.join('\n').trimEnd()
@@ -279,9 +313,61 @@ async function writeMcpByCli(cliId: CliId, config: MCPConfig): Promise<{ success
     const r = await readFile(CODEX_CONFIG_TOML)
     if (!r.success && !/ENOENT/i.test(r.error)) return { success: false, error: r.error }
 
-    const stripped = stripManagedCodexMcpSections(r.data ?? '')
-    const rendered = renderCodexMcpSections(config)
-    const next = [stripped, rendered].filter(Boolean).join('\n\n').trimEnd() + '\n'
+    const currentContent = r.data ?? ''
+    const blocks = parseTomlBlocks(currentContent)
+    const existingConfig = parseCodexMcpFromToml(currentContent)
+
+    const unmanagedText = blocks
+      .filter((block) => !getManagedBlockMeta(block))
+      .map((block) => blockToText(block))
+      .filter(Boolean)
+      .join('\n')
+      .trimEnd()
+
+    const existingManagedGroups = new Map<string, { order: number; texts: string[] }>()
+    for (let i = 0; i < blocks.length; i += 1) {
+      const block = blocks[i]
+      const meta = getManagedBlockMeta(block)
+      if (!meta) continue
+      const groupKey = `${meta.bucket}:${meta.name}`
+      const text = blockToText(block)
+      const group = existingManagedGroups.get(groupKey)
+      if (!group) {
+        existingManagedGroups.set(groupKey, { order: i, texts: [text] })
+      } else {
+        group.texts.push(text)
+      }
+    }
+
+    const desiredEntries = Object.entries(config.mcpServers ?? {})
+    const preservedManaged: Array<{ order: number; text: string }> = []
+    const renderedManaged: string[] = []
+
+    for (const [name, srv] of desiredEntries) {
+      const bucket: ManagedBucket = srv.disabled ? 'disabled' : 'active'
+      const groupKey = `${bucket}:${name}`
+      const prevSrv = existingConfig.mcpServers[name]
+      const sameBucket = prevSrv ? ((prevSrv.disabled ? 'disabled' : 'active') === bucket) : false
+
+      if (prevSrv && sameBucket && isSameManagedServer(srv, prevSrv)) {
+        const existing = existingManagedGroups.get(groupKey)
+        if (existing) {
+          preservedManaged.push({ order: existing.order, text: existing.texts.join('\n') })
+          continue
+        }
+      }
+
+      renderedManaged.push(renderCodexServerSections(bucket, name, srv))
+    }
+
+    preservedManaged.sort((a, b) => a.order - b.order)
+
+    const managedText = [...preservedManaged.map((item) => item.text), ...renderedManaged]
+      .filter(Boolean)
+      .join('\n\n')
+      .trimEnd()
+
+    const next = [unmanagedText, managedText].filter(Boolean).join('\n\n').trimEnd() + '\n'
     return writeFile(CODEX_CONFIG_TOML, next)
   }
 

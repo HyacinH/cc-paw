@@ -54,10 +54,23 @@ async function listCodexSessionFiles(): Promise<string[]> {
   }
 }
 
+async function readFirstLine(filePath: string, maxBytes = 8192): Promise<string> {
+  const handle = await fs.open(filePath, 'r')
+  try {
+    const buffer = Buffer.alloc(maxBytes)
+    const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0)
+    if (bytesRead <= 0) return ''
+    const chunk = buffer.toString('utf8', 0, bytesRead)
+    const newline = chunk.indexOf('\n')
+    return (newline >= 0 ? chunk.slice(0, newline) : chunk).trim()
+  } finally {
+    await handle.close()
+  }
+}
+
 async function readCodexSessionMeta(filePath: string): Promise<{ id: string; cwd: string } | null> {
   try {
-    const raw = await fs.readFile(filePath, 'utf-8')
-    const firstLine = raw.split('\n', 1)[0]
+    const firstLine = await readFirstLine(filePath)
     if (!firstLine) return null
     const obj = JSON.parse(firstLine) as {
       type?: string

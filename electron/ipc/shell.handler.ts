@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { spawn } from 'child_process'
-import { getShellEnv, findClaude, isWin } from '../services/platform'
+import { getShellEnv, findClaude, findCodex, isWin } from '../services/platform'
 
 export interface ShellRunResult {
   success: boolean
@@ -36,5 +36,10 @@ export function registerShellHandlers(): void {
   // 返回 claude 可执行文件路径
   ipcMain.handle('shell:find-claude', () => {
     return { success: true, data: findClaude() }
+  })
+
+  // 返回 codex 可执行文件路径
+  ipcMain.handle('shell:find-codex', () => {
+    return { success: true, data: findCodex() }
   })
 }

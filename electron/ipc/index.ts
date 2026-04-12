@@ -3,7 +3,7 @@ import { registerSkillsHandlers } from './skills.handler'
 import { registerMcpHandlers } from './mcp.handler'
 import { registerDialogHandlers } from './dialog.handler'
 import { registerAppSettingsHandlers } from './app-settings.handler'
-import { registerClaudeSettingsHandlers } from './claude-settings.handler'
+import { registerCliSettingsHandlers } from './cli-settings.handler'
 import { registerPtyHandlers, cleanupPty } from './pty.handler'
 import type { BrowserWindow } from 'electron'
 import { registerDocsHandlers } from './docs.handler'
@@ -20,7 +20,7 @@ export function registerAllHandlers(getMainWindow: () => BrowserWindow | null): 
   registerMcpHandlers()
   registerDialogHandlers()
   registerAppSettingsHandlers()
-  registerClaudeSettingsHandlers()
+  registerCliSettingsHandlers()
   registerPtyHandlers(getMainWindow)
   registerDocsHandlers()
   registerShellHandlers()

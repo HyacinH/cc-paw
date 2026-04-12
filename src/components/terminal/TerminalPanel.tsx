@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useThemeStore } from '../../store/theme.store'
+import type { CliId } from '../../types/cli.types'
 
 const DARK_THEME = {
   background: '#030712',
@@ -50,11 +51,12 @@ interface TerminalPanelProps {
   projectDir: string
   newSession: boolean
   resumeId?: string
+  cliId?: CliId
 }
 
 type PtyUiState = 'running' | 'waiting-input' | 'done' | 'exited' | 'unknown'
 
-export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPanelProps) {
+export function TerminalPanel({ projectDir, newSession, resumeId, cliId = 'claude' }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const toastRef = useRef<HTMLDivElement | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -203,7 +205,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       if (!navigator.clipboard?.readText) return
       navigator.clipboard.readText().then((text) => {
         if (!text || !isActive() || state !== 'live') return
-        window.electronAPI.pty.write(projectDir, text).catch(() => {})
+        window.electronAPI.pty.write(projectDir, text, cliId).catch(() => {})
       }).catch(() => {})
     }
 
@@ -292,7 +294,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
           activeInContainer: !!(active && container.contains(active)),
         })
       }
-      window.electronAPI.pty.write(projectDir, data).catch(() => {})
+      window.electronAPI.pty.write(projectDir, data, cliId).catch(() => {})
     })
 
     term.onKey(() => {
@@ -307,7 +309,6 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       }
     })
 
-    // 接收该 session 的 PTY 输出（booting/starting 时缓存，live 时直写）
     const unsubData = window.electronAPI.pty.onData(projectDir, (data) => {
       if (!isActive()) return
       const printableBytes = getPrintableBytes(data)
@@ -333,7 +334,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         return
       }
       term.write(data)
-    })
+    }, cliId)
 
     const unsubExit = window.electronAPI.pty.onExit(projectDir, () => {
       if (!isActive()) return
@@ -342,9 +343,9 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         return
       }
       term.write('\r\n\x1b[2m[进程已退出]\x1b[0m\r\n')
-    })
-    const unsubPtyState = window.electronAPI.pty.onPtyState((evtProjectDir, nextState) => {
-      if (!isActive() || evtProjectDir !== projectDir) return
+    }, cliId)
+    const unsubPtyState = window.electronAPI.pty.onPtyState((evtProjectDir, nextState, evtCliId) => {
+      if (!isActive() || evtProjectDir !== projectDir || (evtCliId && evtCliId !== cliId)) return
       ptyUiState = nextState
       log('pty ui state update', { ptyUiState })
     })
@@ -384,7 +385,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
         if (cols <= 0 || rows <= 0) return
         const sizeChanged = cols !== lastSyncedCols || rows !== lastSyncedRows
         if (kind === 'hard' && sizeChanged) {
-          window.electronAPI.pty.resize(projectDir, cols, rows).catch(() => {})
+          window.electronAPI.pty.resize(projectDir, cols, rows, cliId).catch(() => {})
           lastSyncedCols = cols
           lastSyncedRows = rows
         }
@@ -464,7 +465,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
           try {
             fitAddon.fit()
             if (term.cols > 0 && term.rows > 0) {
-              await window.electronAPI.pty.resize(projectDir, term.cols, term.rows)
+              await window.electronAPI.pty.resize(projectDir, term.cols, term.rows, cliId)
               lastSyncedCols = term.cols
               lastSyncedRows = term.rows
               log(`${phase} fit+resize`, { cols: term.cols, rows: term.rows, retries: i })
@@ -493,7 +494,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
           fitAddon.fit()
           const { cols, rows } = term
           if (cols > 0 && rows > 0 && (cols !== lastSyncedCols || rows !== lastSyncedRows)) {
-            window.electronAPI.pty.resize(projectDir, cols, rows).catch(() => {})
+            window.electronAPI.pty.resize(projectDir, cols, rows, cliId).catch(() => {})
             lastSyncedCols = cols
             lastSyncedRows = rows
           }
@@ -504,14 +505,14 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
       }, 16)
 
       // 先检查是否已有运行中的 session，有则重放缓冲区，无则启动新进程
-      window.electronAPI.pty.hasSession(projectDir).then(async (r) => {
+      window.electronAPI.pty.hasSession(projectDir, cliId).then(async (r) => {
         if (!isActive()) return
         const hasRunning = r.success && r.data
         log('hasSession resolved', { hasRunning, newSession })
 
         if (hasRunning && !newSession) {
           // 重放历史输出
-          const bufResult = await window.electronAPI.pty.getBuffer(projectDir)
+          const bufResult = await window.electronAPI.pty.getBuffer(projectDir, cliId)
           if (!isActive()) return
           if (bufResult.success && bufResult.data) {
             appendPreReadyBuffer(bufResult.data)
@@ -519,8 +520,8 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
           }
         } else {
           // 启动新 PTY 进程
-          log('pty.create begin', { newSession, hasRunning, resumeId })
-          const result = await window.electronAPI.pty.create(projectDir, newSession, resumeId)
+          log('pty.create begin', { newSession, hasRunning, resumeId, cliId })
+          const result = await window.electronAPI.pty.create(projectDir, newSession, resumeId, cliId)
           if (!isActive()) return
           log('pty.create resolved', { success: result.success })
           if (!result.success) {
@@ -633,7 +634,7 @@ export function TerminalPanel({ projectDir, newSession, resumeId }: TerminalPane
   // key={`${projectDir}-${sessionKey}`} whenever resumeId changes, so the effect always
   // runs fresh with the correct value. eslint-disable covers the omission.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectDir, newSession])
+  }, [projectDir, newSession, cliId])
 
   return (
     <div className="w-full h-full relative">

@@ -5,9 +5,9 @@
 
   [English](README.md) | 中文
 
-  **管理 [Claude Code](https://claude.ai/code) 全套工作流的桌面 GUI 应用。**
+  **管理 [Claude Code](https://claude.ai/code) 与 Codex 工作流的桌面 GUI 应用。**
 
-  [![Version](https://img.shields.io/badge/版本-0.11.5-blue.svg)](package.json)
+  [![Version](https://img.shields.io/badge/版本-0.12.0-blue.svg)](package.json)
   [![License](https://img.shields.io/badge/协议-MIT-green.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/平台-macOS%20%7C%20Windows-lightgray.svg)](#平台支持)
   [![Electron](https://img.shields.io/badge/Electron-33-47848F.svg)](https://electronjs.org/)
@@ -17,9 +17,9 @@
 
 ---
 
-CC Paw 面向需要同时管理多个 Claude Code 项目的用户：把分散在终端和配置文件中的流程，整合为一个清晰的可视化工作区。每个项目都有独立且持久的会话、实时状态与通知，你可以把精力放在需求与决策上，而不是反复切换工具。
+CC Paw 面向需要同时管理多个 Claude Code 与 Codex 项目的用户：把分散在终端和配置文件中的流程，整合为一个清晰的可视化工作区。每个项目都有独立且持久的会话、实时状态与通知，你可以把精力放在需求与决策上，而不是反复切换工具。
 
-它还把 Claude Code 的关键配置流程可视化：系统指令（`CLAUDE.md`）、Skills、MCP 服务器、插件、项目文档与用量分析都能在界面统一管理。无论是非技术用户还是技术用户，都能更便捷地管理项目，获得更顺畅、更稳定的 Claude Code vibecoding 体验。
+它还把 Claude Code 与 Codex 的关键配置流程可视化：系统指令（`CLAUDE.md`）、Skills、MCP 服务器、插件、项目文档与用量分析都能在界面统一管理。无论是非技术用户还是技术用户，都能更便捷地管理项目，获得更顺畅、更稳定的 vibecoding 体验。
 
 ## 获取应用
 
@@ -30,7 +30,7 @@ CC Paw 面向需要同时管理多个 Claude Code 项目的用户：把分散在
 sudo xattr -rd com.apple.quarantine "/Applications/CC Paw.app"
 ```
 
-- **源码运行：** 克隆仓库后执行 `npm install`，再 `npm run dev`（详见下文 [快速开始](#快速开始)）。完整使用需要已安装 **Claude Code** CLI，且存在可用的 `~/.claude/`。
+- **源码运行：** 克隆仓库后执行 `npm install`，再 `npm run dev`（详见下文 [快速开始](#快速开始)）。完整使用需要已安装 **Claude Code** 和/或 **Codex** CLI，且存在可用的 `~/.claude/` 和/或 `~/.codex/`。
 - **本地打包：** 执行 `npm run package`，在 `release/` 下生成当前系统对应的安装包（仅当前主机平台）。
 
 ## 核心功能
@@ -39,13 +39,20 @@ sudo xattr -rd com.apple.quarantine "/Applications/CC Paw.app"
 
 与项目直接相关的核心流程集中在同一个工作区（下图为对应界面）：
 
-- **多项目并行会话：** 每个项目独立且持久的 Claude 终端，切换项目不丢上下文。
+- **多项目并行会话：** 每个项目独立且持久的 CLI 终端（Claude Code 或 Codex），切换项目不丢上下文。
 - **会话生命周期管理：** 支持新建会话，也可回看并继续历史存档会话。
 - **项目管理：** 支持项目命名、侧边栏快速切换，以及按项目状态实时标记。
 - **项目文档（Docs）：** 在 `docs/` 内编辑 Markdown，实时预览并自动保存。
-- **项目设定：** 直接在界面编辑 Claude Code 共享配置（`~/.claude/settings.json`）。
+- **项目设定：** 直接在界面编辑共享 CLI 配置（`~/.claude/settings.json`、`~/.codex/config.toml`）。
+- **CLI 运行时切换：** 可在 Settings 中选择 Claude Code 或 Codex，控制当前会话运行时与配置作用域。
 
 ![项目工作区：会话、文档与设定](resources/images/image_project.png)
+
+### Settings 中切换 CLI
+
+你可以在 Settings 页面选择当前激活的 CLI 运行时（Claude Code 或 Codex）。该选择会决定项目会话使用的终端环境与配置作用域。
+
+![Settings：切换激活 CLI 运行时](resources/images/image_settings.png)
 
 ### 插件市场
 
@@ -63,7 +70,7 @@ sudo xattr -rd com.apple.quarantine "/Applications/CC Paw.app"
 
 用量与成本在独立面板统一展示（下图为对应界面）：
 
-- 读取 `~/.claude/projects/` 下 Claude Code JSONL 日志
+- 读取 `~/.claude/projects/` 下 Claude Code JSONL 日志，以及 `~/.codex/sessions/` 下 Codex 会话日志
 - 汇总输入/输出/cache token 与估算费用
 - 支持自定义时间范围筛选
 - 提供按小时 / 日 / 周 / 月的柱状图视图
@@ -73,15 +80,15 @@ sudo xattr -rd com.apple.quarantine "/Applications/CC Paw.app"
 
 ### 系统设定
 
-在 Monaco Editor 中统一维护全局与项目级 `CLAUDE.md` 系统指令。
+在 Monaco Editor 中统一维护全局与项目级指令文件（Claude Code 使用 `CLAUDE.md`，Codex 使用 `AGENTS.md`）。
 
 ### Skills 管理
 
-管理 `~/.claude/skills/`，支持新增、编辑与 URL 导入。
+管理 `~/.claude/skills/` 与 `~/.codex/skills/`，支持新增、编辑与 URL 导入。
 
 ### MCP 服务器配置
 
-可视化编辑 `~/.claude.json` 的 `mcpServers` 并在保存前校验。
+可视化编辑并校验两套运行时的 MCP 配置（`~/.claude.json` 与 `~/.codex/config.toml`）后再保存。
 
 ---
 
@@ -98,7 +105,7 @@ sudo xattr -rd com.apple.quarantine "/Applications/CC Paw.app"
 **所有平台：**
 - **Node.js** 18+
 - **npm** 9+
-- 已安装 **Claude Code** CLI（需要 `~/.claude/` 目录存在）
+- 已安装 **Claude Code** 和/或 **Codex** CLI（需存在 `~/.claude/` 和/或 `~/.codex/`）
 
 **仅 Windows** — `node-pty` 是 C++ 原生模块，需要编译器工具链。在**管理员 PowerShell** 中运行：
 
@@ -138,7 +145,7 @@ npm install
 npm run dev
 ```
 
-应用打开后，点击侧边栏的 **+** 添加项目目录，再点击项目名称即可打开 Claude Code 会话。
+应用打开后，点击侧边栏的 **+** 添加项目目录，再点击项目名称即可打开 CLI 会话。
 
 ## 构建与打包
 
@@ -176,8 +183,8 @@ CC Paw 是标准的 Electron 应用，严格分离进程职责。所有文件系
 │  主进程（Node.js，electron/ipc/*.handler.ts）                         │
 │                                                                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐              │
-│  │  文件 I/O    │  │   node-pty   │  │  shell 运行器 │              │
-│  │  (~/.claude) │  │  （终端会话）│  │ （插件/skills）│             │
+│  │  (~/.claude, │  │   node-pty   │  │  shell 运行器 │              │
+│  │   ~/.codex)  │  │  （终端会话）│  │ （插件/skills）│             │
 │  └──────────────┘  └──────────────┘  └───────────────┘              │
 └──────────────────────────────────────────────────────────────────────┘
 ```

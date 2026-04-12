@@ -4,6 +4,7 @@ import fs from 'fs'
 import { EDIT_COMMAND_IDS, type EditCommandId } from '../src/types/edit-command.types'
 import { registerAllHandlers, cleanupPty } from './ipc'
 import { initShellEnv } from './services/platform'
+import { runDataMigrations } from './services/migrations.service'
 
 // Set app name early so native integration uses "CC Paw".
 app.name = 'CC Paw'
@@ -109,6 +110,7 @@ let mainWindow: BrowserWindow | null = null
 
 app.whenReady().then(async () => {
   await initShellEnv()
+  await runDataMigrations()
 
   Menu.setApplicationMenu(buildAppMenu())
 

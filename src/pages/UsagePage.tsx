@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { BarChart2, Loader2, RefreshCw, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import type { UsageStats } from '../types/electron'
+import { useAppSettingsStore } from '../store/appSettings.store'
+import { DEFAULT_CLI_ID } from '../types/cli.types'
 
 
 type ViewMode = 'hour' | 'day' | 'month' | 'week'
@@ -236,6 +238,8 @@ function ProjectTable({ byProject, multiplier }: { byProject: UsageStats['byProj
 }
 
 export default function UsagePage() {
+  const activeCli = useAppSettingsStore((s) => s.defaultCli ?? DEFAULT_CLI_ID)
+  const isClaude = activeCli === 'claude'
   const [stats, setStats] = useState<UsageStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -313,6 +317,12 @@ export default function UsagePage() {
   }, [quickOpen])
 
   useEffect(() => {
+    if (!isClaude) {
+      setLoading(false)
+      setStats(null)
+      setError(null)
+      return
+    }
     if (rangeStart > rangeEnd) {
       setRangeError('开始日期不能晚于结束日期')
       setRangeHint('')
@@ -503,11 +513,13 @@ export default function UsagePage() {
             Token 用量
           </h1>
           <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
-            读取自 ~/.claude/projects/ · 自动视图规则：72小时→30天→1年周视图→5年月视图
+            {isClaude
+              ? '读取自 ~/.claude/projects/ · 自动视图规则：72小时→30天→1年周视图→5年月视图'
+              : '当前 CLI：Codex'}
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        {isClaude && <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             {VIEW_OPTIONS.map((item) => {
               const disabled = !isViewAllowed(item.key, rangeStart, rangeEnd)
@@ -609,56 +621,65 @@ export default function UsagePage() {
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             刷新
           </button>
-        </div>
+        </div>}
       </div>
 
-      {rangeError && <div className="text-xs text-red-500">{rangeError}</div>}
-      {!rangeError && rangeHint && <div className="text-xs text-amber-500">{rangeHint}</div>}
-      {multiplierError && <div className="text-xs text-red-500">{multiplierError}</div>}
-      {!multiplierError && <div className="text-xs text-gray-400 dark:text-gray-600">倍率输入时仅限制字符与长度，按 Enter 应用</div>}
-
-      {loading && (
-        <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-600 py-8 justify-center">
-          <Loader2 size={16} className="animate-spin" />
-          正在读取会话记录…
+      {!isClaude ? (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">暂不支持 Codex 用量统计</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">当前用量页仅支持 Claude Code，会在后续版本补充 Codex。</p>
         </div>
-      )}
-
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-          <AlertCircle size={14} className="shrink-0" />
-          {error}
-        </div>
-      )}
-
-      {stats && !loading && !rangeError && (
+      ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard
-              label="总输出 tokens"
-              value={fmtTokens(stats.totals.outputTokens)}
-              sub={`输入 ${fmtTokens(stats.totals.inputTokens)}`}
-            />
-            <StatCard
-              label="Cache 命中"
-              value={fmtTokens(stats.totals.cacheReadTokens)}
-              sub="节省大量费用"
-            />
-            <StatCard
-              label="累计会话"
-              value={String(stats.totals.sessionCount)}
-              sub={`${stats.totals.messageCount} 条消息`}
-            />
-            <StatCard
-              label="估算费用"
-              value={fmtCost(totalCost * multiplier)}
-              sub={multiplier !== 1 ? `× ${multiplier} 倍率` : '按实际模型定价'}
-            />
-          </div>
+          {rangeError && <div className="text-xs text-red-500">{rangeError}</div>}
+          {!rangeError && rangeHint && <div className="text-xs text-amber-500">{rangeHint}</div>}
+          {multiplierError && <div className="text-xs text-red-500">{multiplierError}</div>}
+          {!multiplierError && <div className="text-xs text-gray-400 dark:text-gray-600">倍率输入时仅限制字符与长度，按 Enter 应用</div>}
 
-          <UsageTrendChart data={chart.data} title={chart.title} periodTotal={chart.periodTotal} />
+          {loading && (
+            <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-600 py-8 justify-center">
+              <Loader2 size={16} className="animate-spin" />
+              正在读取会话记录…
+            </div>
+          )}
 
-          <ProjectTable byProject={stats.byProject} multiplier={multiplier} />
+          {error && (
+            <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
+              <AlertCircle size={14} className="shrink-0" />
+              {error}
+            </div>
+          )}
+
+          {stats && !loading && !rangeError && (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatCard
+                  label="总输出 tokens"
+                  value={fmtTokens(stats.totals.outputTokens)}
+                  sub={`输入 ${fmtTokens(stats.totals.inputTokens)}`}
+                />
+                <StatCard
+                  label="Cache 命中"
+                  value={fmtTokens(stats.totals.cacheReadTokens)}
+                  sub="节省大量费用"
+                />
+                <StatCard
+                  label="累计会话"
+                  value={String(stats.totals.sessionCount)}
+                  sub={`${stats.totals.messageCount} 条消息`}
+                />
+                <StatCard
+                  label="估算费用"
+                  value={fmtCost(totalCost * multiplier)}
+                  sub={multiplier !== 1 ? `× ${multiplier} 倍率` : '按实际模型定价'}
+                />
+              </div>
+
+              <UsageTrendChart data={chart.data} title={chart.title} periodTotal={chart.periodTotal} />
+
+              <ProjectTable byProject={stats.byProject} multiplier={multiplier} />
+            </>
+          )}
         </>
       )}
     </div>

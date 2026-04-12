@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import AppShell from './components/layout/AppShell'
 import ClaudeMdPage from './pages/ClaudeMdPage'
 import SkillsPage from './pages/SkillsPage'
@@ -13,11 +13,14 @@ import UsagePage from './pages/UsagePage'
 import SetupModal from './components/ui/SetupModal'
 import { useThemeStore } from './store/theme.store'
 import { usePtyStore } from './store/pty.store'
+import { useAppSettingsStore } from './store/appSettings.store'
+import { DEFAULT_CLI_ID } from './types/cli.types'
 
 export default function App() {
   const [showSetup, setShowSetup] = useState(false)
   const { theme } = useThemeStore()
   const { setProjectState } = usePtyStore()
+  const activeCli = useAppSettingsStore((s) => s.defaultCli ?? DEFAULT_CLI_ID)
   const electronAPI = window.electronAPI
 
   // Apply dark/light class to <html>
@@ -40,8 +43,8 @@ export default function App() {
   // Global PTY state listener — drives sidebar glow indicators
   useEffect(() => {
     if (!electronAPI) return
-    return electronAPI.pty.onPtyState((projectDir, state) => {
-      setProjectState(projectDir, state)
+    return electronAPI.pty.onPtyState((projectDir, state, cliId) => {
+      setProjectState(projectDir, state, cliId)
     })
   }, [electronAPI, setProjectState])
 
@@ -63,7 +66,7 @@ export default function App() {
           <Route path="/" element={<ClaudeMdPage />} />
           <Route path="/skills" element={<SkillsPage />} />
           <Route path="/mcp" element={<McpPage />} />
-          <Route path="/plugins" element={<PluginsPage />} />
+          <Route path="/plugins" element={activeCli === 'claude' ? <PluginsPage /> : <Navigate to="/skills" replace />} />
           <Route path="/project/:encodedPath" element={<ProjectPage />} />
           <Route path="/project/:encodedPath/claude-md" element={<ProjectClaudeMdPage />} />
           <Route path="/project/:encodedPath/docs" element={<ProjectDocsPage />} />

@@ -11,6 +11,8 @@ import {
 import type { SkillFile } from '../types/skill.types'
 import type { PluginSkillEntry } from '../types/electron'
 import { useMonacoTheme } from '../hooks/useMonacoTheme'
+import { useAppSettingsStore } from '../store/appSettings.store'
+import { DEFAULT_CLI_ID } from '../types/cli.types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SKILL_NAME_RE = /^[a-zA-Z0-9_-]+$/
@@ -31,7 +33,8 @@ function nameFromUrl(url: string): string {
 
 // ─── LocalSidebar ─────────────────────────────────────────────────────────────
 function LocalSidebar({
-  skills, pluginSkills, selected, selectedPluginSkill,
+  skills, pluginSkills, isClaude,
+  selected, selectedPluginSkill,
   renameTarget, renameName, showNewInput, newSkillName, createError, reloading,
   onSelect, onSelectPlugin,
   onRenameStart, onRenameChange, onRenameConfirm, onRenameCancel,
@@ -39,6 +42,7 @@ function LocalSidebar({
 }: {
   skills: SkillFile[]
   pluginSkills: PluginSkillEntry[]
+  isClaude: boolean
   selected: string | null
   selectedPluginSkill: PluginSkillEntry | null
   renameTarget: string | null
@@ -105,7 +109,9 @@ function LocalSidebar({
         {skills.length === 0 && pluginSkills.length === 0 && (
           <p className="px-3 py-6 text-xs text-gray-400 dark:text-gray-600 text-center">
             暂无 Skill<br />
-            <span className="text-[10px]">点击 + 新建，或从插件市场安装插件</span>
+            <span className="text-[10px]">
+              {isClaude ? '点击 + 新建，或从插件市场安装插件' : '点击 + 新建，或从 URL 导入'}
+            </span>
           </p>
         )}
 
@@ -277,7 +283,8 @@ function ImportUrlPanel({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function SkillsPage() {
   const monacoTheme = useMonacoTheme()
-  // ── State ─────────────────────────────────────────────────────────────────────
+  const { defaultCli, load: loadAppSettings } = useAppSettingsStore()
+  const activeCliId = defaultCli ?? DEFAULT_CLI_ID
   const [skills, setSkills] = useState<SkillFile[]>([])
   const [pluginSkills, setPluginSkills] = useState<PluginSkillEntry[]>([])
   const [selected, setSelected] = useState<string | null>(null)
@@ -303,16 +310,18 @@ export default function SkillsPage() {
   const [importSaving, setImportSaving] = useState(false)
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
+  useEffect(() => { loadAppSettings() }, [loadAppSettings])
+
   const reload = useCallback(async () => {
     setReloading(true)
     try {
-      const [list, pluginList] = await Promise.all([
-        listSkills(),
-        listPluginSkills().catch((e) => {
-          console.error('[SkillsPage] listPluginSkills failed:', e)
-          return [] as PluginSkillEntry[]
-        }),
-      ])
+      const list = await listSkills(activeCliId)
+      const pluginList = activeCliId === 'claude'
+        ? await listPluginSkills(activeCliId).catch((e) => {
+            console.error('[SkillsPage] listPluginSkills failed:', e)
+            return [] as PluginSkillEntry[]
+          })
+        : []
       setSkills(list)
       setPluginSkills(pluginList)
     } catch (e) {
@@ -320,9 +329,17 @@ export default function SkillsPage() {
     } finally {
       setReloading(false)
     }
-  }, [])
+  }, [activeCliId])
 
-  useEffect(() => { reload() }, [reload])
+  useEffect(() => {
+    setSelected(null)
+    setSelectedPluginSkill(null)
+    setContent('')
+    setError(null)
+    setSavedOk(false)
+  }, [activeCliId])
+
+  useEffect(() => { reload() }, [reload, activeCliId])
 
   const handleSelect = useCallback(async (name: string) => {
     setSelected(name)
@@ -330,9 +347,9 @@ export default function SkillsPage() {
     setShowImportUrl(false)
     setError(null)
     setSavedOk(false)
-    const c = await readSkill(name)
+    const c = await readSkill(name, activeCliId)
     setContent(c ?? '')
-  }, [])
+  }, [activeCliId])
 
   const handleSelectPlugin = useCallback((entry: PluginSkillEntry) => {
     setSelectedPluginSkill(entry)
@@ -345,12 +362,12 @@ export default function SkillsPage() {
     if (!selected) return
     setSaving(true); setError(null); setSavedOk(false)
     try {
-      await writeSkill(selected, content)
+      await writeSkill(selected, content, activeCliId)
       setSavedOk(true)
       setTimeout(() => setSavedOk(false), 2000)
     } catch (e) { setError(String(e)) }
     finally { setSaving(false) }
-  }, [selected, content])
+  }, [selected, content, activeCliId])
 
   const handleCreate = useCallback(async () => {
     const name = newSkillName.trim()
@@ -358,28 +375,28 @@ export default function SkillsPage() {
     if (!SKILL_NAME_RE.test(name)) { setCreateError('只允许字母、数字、连字符、下划线'); return }
     if (skills.some((s) => s.name === name)) { setCreateError('Skill 已存在'); return }
     try {
-      await writeSkill(name, `# ${name}\n\n`)
+      await writeSkill(name, `# ${name}\n\n`, activeCliId)
       setNewSkillName(''); setShowNewInput(false); setCreateError(null)
       await reload()
       await handleSelect(name)
     } catch (e) { setCreateError(String(e)) }
-  }, [newSkillName, skills, reload, handleSelect])
+  }, [newSkillName, skills, reload, handleSelect, activeCliId])
 
   const handleDelete = useCallback(async (name: string) => {
     if (!confirm(`删除 Skill "${name}"？`)) return
-    await deleteSkill(name)
+    await deleteSkill(name, activeCliId)
     if (selected === name) { setSelected(null); setContent('') }
     await reload()
-  }, [selected, reload])
+  }, [selected, reload, activeCliId])
 
   const handleRename = useCallback(async (oldName: string) => {
     const newName = renameName.trim()
     if (!SKILL_NAME_RE.test(newName)) { setError('名称只允许字母、数字、连字符、下划线'); return }
-    await renameSkill(oldName, newName)
+    await renameSkill(oldName, newName, activeCliId)
     if (selected === oldName) setSelected(newName)
     setRenameTarget(null); setRenameName(''); setError(null)
     await reload()
-  }, [renameName, selected, reload])
+  }, [renameName, selected, reload, activeCliId])
 
   const handleFetchUrl = useCallback(async () => {
     const url = importUrl.trim()
@@ -401,14 +418,14 @@ export default function SkillsPage() {
     if (skills.some((s) => s.name === name)) { setImportError('Skill 已存在'); return }
     setImportSaving(true)
     try {
-      await writeSkill(name, importPreview)
+      await writeSkill(name, importPreview, activeCliId)
       await reload()
       await handleSelect(name)
       setShowImportUrl(false)
       setImportUrl(''); setImportName(''); setImportPreview(null); setImportError(null)
     } catch (e) { setImportError(String(e)) }
     finally { setImportSaving(false) }
-  }, [importPreview, importName, skills, reload, handleSelect])
+  }, [importPreview, importName, skills, reload, handleSelect, activeCliId])
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
@@ -418,6 +435,7 @@ export default function SkillsPage() {
         <LocalSidebar
           skills={skills}
           pluginSkills={pluginSkills}
+          isClaude={activeCliId === 'claude'}
           selected={selected}
           selectedPluginSkill={selectedPluginSkill}
           renameTarget={renameTarget}

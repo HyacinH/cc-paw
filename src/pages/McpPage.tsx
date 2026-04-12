@@ -7,6 +7,8 @@ import {
 import { readMcpConfig, writeMcpConfig } from '../api/mcp'
 import type { MCPConfig, MCPServerConfig } from '../types/mcp.types'
 import type { InstalledPluginInfo } from '../types/electron'
+import { useAppSettingsStore } from '../store/appSettings.store'
+import { DEFAULT_CLI_ID } from '../types/cli.types'
 import { TerminalPanel } from '../components/terminal/TerminalPanel'
 
 // ─── Row types ────────────────────────────────────────────────────────────────
@@ -368,6 +370,7 @@ function PluginMcpPanel({
   const ptyUnsubRef = useRef<(() => void) | null>(null)
   const verifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mcpOutputRef = useRef('')
+  const authCliId = 'claude' as const
 
   const stopPolling = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
   const stopPtyListener = () => {
@@ -387,7 +390,7 @@ function PluginMcpPanel({
     if (authStep !== 'verifying') return
     mcpOutputRef.current = ''
     verifyTimerRef.current = setTimeout(async () => {
-      if (terminalDir) await window.electronAPI.pty.write(terminalDir, '/mcp\n')
+      if (terminalDir) await window.electronAPI.pty.write(terminalDir, '/mcp\n', authCliId)
       stopPtyListener()
       ptyUnsubRef.current = terminalDir ? window.electronAPI.pty.onData(terminalDir, chunk => {
         const clean = chunk.replace(/\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '')
@@ -399,7 +402,7 @@ function PluginMcpPanel({
           setTerminalDir(null)
           onAuthDone()
         }
-      }) : null
+      }, authCliId) : null
     }, 1500)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authStep])
@@ -433,13 +436,13 @@ function PluginMcpPanel({
             setAutoOpenedUrl(url)
           }
         }
-      })
+      }, authCliId)
     } catch (e) { setAuthStep('error'); setAuthError(String(e)) }
   }
 
   const cancelAuth = () => {
     stopPolling(); stopPtyListener()
-    if (terminalDir) window.electronAPI.pty.kill(terminalDir).catch(() => {})
+    if (terminalDir) window.electronAPI.pty.kill(terminalDir, authCliId).catch(() => {})
     setAuthStep('idle'); setTerminalDir(null); setAutoOpenedUrl(null)
   }
 
@@ -609,7 +612,7 @@ function PluginMcpPanel({
               </button>
             </div>
             <div style={{ height: 282 }}>
-              <TerminalPanel key={terminalKey} projectDir={terminalDir} newSession={true} />
+              <TerminalPanel key={terminalKey} projectDir={terminalDir} newSession={true} cliId={authCliId} />
             </div>
           </div>
         )}
@@ -661,6 +664,9 @@ function PluginMcpPanel({
 
 // ─── McpPage ──────────────────────────────────────────────────────────────────
 export default function McpPage() {
+  const { defaultCli } = useAppSettingsStore()
+  const activeCli = defaultCli ?? DEFAULT_CLI_ID
+  const showClaudePluginMcp = activeCli === 'claude'
   const [config, setConfig] = useState<MCPConfig>({ mcpServers: {} })
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const [isNew, setIsNew] = useState(false)
@@ -684,9 +690,9 @@ export default function McpPage() {
   }, [])
 
   const reload = useCallback(async () => {
-    const cfg = await readMcpConfig()
+    const cfg = await readMcpConfig(activeCli)
     setConfig(cfg)
-  }, [])
+  }, [activeCli])
 
   const reloadPlugins = useCallback(async () => {
     setLoadingPlugins(true)
@@ -700,7 +706,16 @@ export default function McpPage() {
     } finally { setLoadingPlugins(false) }
   }, [])
 
-  useEffect(() => { reload(); reloadPlugins() }, [reload, reloadPlugins])
+  useEffect(() => {
+    reload()
+    if (!showClaudePluginMcp) {
+      setPluginMcps([])
+      setAuthCache({})
+      setSelectedPlugin(null)
+      return
+    }
+    reloadPlugins()
+  }, [reload, reloadPlugins, showClaudePluginMcp])
 
   const serverNames = Object.keys(config.mcpServers)
 
@@ -759,7 +774,7 @@ export default function McpPage() {
       }
       newConfig.mcpServers[serverName] = formToConfig(form)
 
-      await writeMcpConfig(newConfig)
+      await writeMcpConfig(newConfig, activeCli)
       setConfig(newConfig)
       setSelectedName(serverName)
       setIsNew(false)
@@ -773,7 +788,7 @@ export default function McpPage() {
     if (!confirm(`删除 MCP Server "${name}"？`)) return
     const newConfig: MCPConfig = { ...config, mcpServers: { ...config.mcpServers } }
     delete newConfig.mcpServers[name]
-    await writeMcpConfig(newConfig)
+    await writeMcpConfig(newConfig, activeCli)
     setConfig(newConfig)
     if (selectedName === name) handleClose()
   }
@@ -785,7 +800,7 @@ export default function McpPage() {
       ...config,
       mcpServers: { ...config.mcpServers, [name]: { ...srv, disabled: nowDisabled } },
     }
-    await writeMcpConfig(newConfig)
+    await writeMcpConfig(newConfig, activeCli)
     setConfig(newConfig)
     if (selectedName === name) setForm(f => ({ ...f, disabled: nowDisabled }))
     showNotice(
@@ -806,7 +821,7 @@ export default function McpPage() {
         ...config,
         mcpServers: { ...config.mcpServers, [serverName]: { ...config.mcpServers[serverName], disabled: !newEnabled } },
       }
-      await writeMcpConfig(newConfig)
+      await writeMcpConfig(newConfig, activeCli)
       setConfig(newConfig)
     }
 
@@ -820,7 +835,7 @@ export default function McpPage() {
     )
   }
 
-  const showingPlugin = selectedPlugin !== null
+  const showingPlugin = showClaudePluginMcp && selectedPlugin !== null
   const showingManual = !showingPlugin && (selectedName !== null || isNew)
 
   // Cmd+S to save
@@ -901,66 +916,70 @@ export default function McpPage() {
           })}
         </div>
 
-        {/* Plugin MCP section */}
-        <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 dark:border-gray-800 shrink-0">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">插件 MCP</span>
-          <button
-            onClick={reloadPlugins}
-            disabled={loadingPlugins}
-            className="p-1 text-gray-400 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded disabled:opacity-50 transition-colors"
-            title="刷新"
-          >
-            <RefreshCw size={11} className={loadingPlugins ? 'animate-spin' : ''} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto py-1">
-          {pluginMcps.length === 0 && !loadingPlugins && (
-            <p className="px-3 py-4 text-[11px] text-gray-400 dark:text-gray-600 text-center">
-              无插件 MCP
-              <br />
-              <span className="text-[10px]">在插件市场安装含 MCP 的插件</span>
-            </p>
-          )}
-          {pluginMcps.map(plugin => {
-            const mcp = plugin.mcpServer!
-            const isAuthNeeded = needsAuth(plugin.pluginName, authCache)
-            const isSelected = selectedPlugin?.pluginKey === plugin.pluginKey
-            return (
-              <div
-                key={plugin.pluginKey}
-                onClick={() => { setSelectedPlugin(plugin); setSelectedName(null); setIsNew(false) }}
-                className={`group flex items-center gap-2 mx-1.5 px-2 py-2 cursor-pointer rounded-lg transition-colors ${
-                  isSelected ? 'bg-blue-500/15' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                } ${!plugin.enabled ? 'opacity-50' : ''}`}
+        {showClaudePluginMcp && (
+          <>
+            {/* Plugin MCP section */}
+            <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200 dark:border-gray-800 shrink-0">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">插件 MCP</span>
+              <button
+                onClick={reloadPlugins}
+                disabled={loadingPlugins}
+                className="p-1 text-gray-400 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 rounded disabled:opacity-50 transition-colors"
+                title="刷新"
               >
-                <div className={`shrink-0 w-6 h-6 rounded-md flex items-center justify-center ${
-                  isSelected ? 'bg-blue-500/20' : 'bg-gray-100 dark:bg-gray-800'
-                }`}>
-                  {mcp.type === 'remote'
-                    ? <Globe size={11} className={isSelected ? 'text-blue-400' : 'text-gray-400 dark:text-gray-500'} />
-                    : <Cpu size={11} className={isSelected ? 'text-blue-400' : 'text-gray-400 dark:text-gray-500'} />
-                  }
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1">
-                    <span className={`text-sm truncate font-medium leading-tight ${isSelected ? 'text-blue-400' : !plugin.enabled ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>
-                      {plugin.pluginName}
-                    </span>
-                    {isAuthNeeded && <span title="需要授权"><ShieldAlert size={10} className="text-amber-400 shrink-0" /></span>}
+                <RefreshCw size={11} className={loadingPlugins ? 'animate-spin' : ''} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-1">
+              {pluginMcps.length === 0 && !loadingPlugins && (
+                <p className="px-3 py-4 text-[11px] text-gray-400 dark:text-gray-600 text-center">
+                  无插件 MCP
+                  <br />
+                  <span className="text-[10px]">在插件市场安装含 MCP 的插件</span>
+                </p>
+              )}
+              {pluginMcps.map(plugin => {
+                const mcp = plugin.mcpServer!
+                const isAuthNeeded = needsAuth(plugin.pluginName, authCache)
+                const isSelected = selectedPlugin?.pluginKey === plugin.pluginKey
+                return (
+                  <div
+                    key={plugin.pluginKey}
+                    onClick={() => { setSelectedPlugin(plugin); setSelectedName(null); setIsNew(false) }}
+                    className={`group flex items-center gap-2 mx-1.5 px-2 py-2 cursor-pointer rounded-lg transition-colors ${
+                      isSelected ? 'bg-blue-500/15' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                    } ${!plugin.enabled ? 'opacity-50' : ''}`}
+                  >
+                    <div className={`shrink-0 w-6 h-6 rounded-md flex items-center justify-center ${
+                      isSelected ? 'bg-blue-500/20' : 'bg-gray-100 dark:bg-gray-800'
+                    }`}>
+                      {mcp.type === 'remote'
+                        ? <Globe size={11} className={isSelected ? 'text-blue-400' : 'text-gray-400 dark:text-gray-500'} />
+                        : <Cpu size={11} className={isSelected ? 'text-blue-400' : 'text-gray-400 dark:text-gray-500'} />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className={`text-sm truncate font-medium leading-tight ${isSelected ? 'text-blue-400' : !plugin.enabled ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>
+                          {plugin.pluginName}
+                        </span>
+                        {isAuthNeeded && <span title="需要授权"><ShieldAlert size={10} className="text-amber-400 shrink-0" /></span>}
+                      </div>
+                      <p className="text-[10px] text-gray-400 dark:text-gray-600 truncate leading-tight">
+                        {mcp.type === 'remote' ? mcp.url : mcp.command}
+                      </p>
+                    </div>
+                    <span
+                      title={plugin.enabled ? '已启用' : '已禁用'}
+                      className={`shrink-0 w-1.5 h-1.5 rounded-full ${plugin.enabled ? 'bg-green-400' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    />
                   </div>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-600 truncate leading-tight">
-                    {mcp.type === 'remote' ? mcp.url : mcp.command}
-                  </p>
-                </div>
-                <span
-                  title={plugin.enabled ? '已启用' : '已禁用'}
-                  className={`shrink-0 w-1.5 h-1.5 rounded-full ${plugin.enabled ? 'bg-green-400' : 'bg-gray-300 dark:bg-gray-600'}`}
-                />
-              </div>
-            )
-          })}
-        </div>
+                )
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Right panel ─────────────────────────────────────────────────────── */}

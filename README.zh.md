@@ -80,15 +80,15 @@ sudo xattr -rd com.apple.quarantine "/Applications/CC Paw.app"
 
 ### 系统设定
 
-在 Monaco Editor 中统一维护全局与项目级 `CLAUDE.md` 系统指令。
+在 Monaco Editor 中统一维护全局与项目级指令文件（Claude Code 使用 `CLAUDE.md`，Codex 使用 `AGENTS.md`）。
 
 ### Skills 管理
 
-管理 `~/.claude/skills/`，支持新增、编辑与 URL 导入。
+管理 `~/.claude/skills/` 与 `~/.codex/skills/`，支持新增、编辑与 URL 导入。
 
 ### MCP 服务器配置
 
-可视化编辑 `~/.claude.json` 的 `mcpServers` 并在保存前校验。
+可视化编辑并校验两套运行时的 MCP 配置（`~/.claude.json` 与 `~/.codex/config.toml`）后再保存。
 
 ---
 

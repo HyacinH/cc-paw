@@ -80,15 +80,15 @@ Usage and cost insights are shown in a dedicated dashboard (screenshot below):
 
 ### System prompts & settings
 
-Maintain global and project-level `CLAUDE.md` instructions in Monaco Editor.
+Maintain global and project-level instruction files in Monaco Editor (`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex).
 
 ### Skills manager
 
-Manage skill files in `~/.claude/skills/`, including URL import.
+Manage skill files in `~/.claude/skills/` and `~/.codex/skills/`, including URL import.
 
 ### MCP server configuration
 
-Edit and validate `mcpServers` in `~/.claude.json` before saving.
+Edit and validate MCP server entries for both runtimes (`~/.claude.json` and `~/.codex/config.toml`) before saving.
 
 ---
 

@@ -423,6 +423,8 @@ export default function ProjectPage() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [snapshots, setSnapshots] = useState<SessionSnapshot[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [isSwitchingToNewSession, setIsSwitchingToNewSession] = useState(false)
+  const pendingPreviousSessionIdRef = useRef<string | null>(null)
 
   // Route param changes reuse the same component instance, so reset per-project
   // session-control state to avoid carrying "new/restore" intent across projects.
@@ -433,6 +435,8 @@ export default function ProjectPage() {
     setShowDropdown(false)
     setSnapshots([])
     setCurrentSessionId(null)
+    setIsSwitchingToNewSession(false)
+    pendingPreviousSessionIdRef.current = null
   }, [projectDir, projectCliId])
 
   useEffect(() => { loadSettings() }, [loadSettings])
@@ -443,8 +447,19 @@ export default function ProjectPage() {
       listSnapshots(projectDir, projectCliId).catch(() => [] as SessionSnapshot[]),
       getCurrentSessionId(projectDir, projectCliId).catch(() => null),
     ])
+
+    const pendingPreviousSessionId = pendingPreviousSessionIdRef.current
+    let shouldHideCurrentSession = false
+    if (pendingPreviousSessionId && sessionId && sessionId !== pendingPreviousSessionId) {
+      pendingPreviousSessionIdRef.current = null
+      setIsSwitchingToNewSession(false)
+    }
+    if (pendingPreviousSessionId && sessionId === pendingPreviousSessionId) {
+      shouldHideCurrentSession = true
+    }
+
     setSnapshots(list)
-    setCurrentSessionId(sessionId)
+    setCurrentSessionId(shouldHideCurrentSession ? null : sessionId)
   }, [projectDir, projectCliId])
 
   useEffect(() => {
@@ -467,7 +482,14 @@ export default function ProjectPage() {
       const id = await getCurrentSessionId(projectDir, projectCliId).catch(() => null)
       if (cancelled) return
 
+      const pendingPreviousSessionId = pendingPreviousSessionIdRef.current
+      if (pendingPreviousSessionId && id === pendingPreviousSessionId) {
+        timer = setTimeout(poll, 600)
+        return
+      }
+
       if (id) {
+        pendingPreviousSessionIdRef.current = null
         setCurrentSessionId(id)
         await loadSnapshots()
         return
@@ -513,27 +535,35 @@ export default function ProjectPage() {
       log('pty.kill done')
       if (nextResumeId) {
         // Restore: session ID is known immediately
+        pendingPreviousSessionIdRef.current = null
+        setIsSwitchingToNewSession(false)
         setCurrentSessionId(nextResumeId)
         log('restore setCurrentSessionId')
       } else {
-        // New session: clear stale name right away, then poll for any available current ID.
+        // New session: clear stale name right away, then poll for a different current ID.
+        const previousSessionId = currentSessionId
+        pendingPreviousSessionIdRef.current = previousSessionId
+        setIsSwitchingToNewSession(true)
         await window.electronAPI.pty.clearSession(projectDir, projectCliId)
-        log('pty.clearSession done')
+        log('pty.clearSession done', { previousSessionId })
         setCurrentSessionId(null)
         let attempts = 0
         const poll = async () => {
           if (attempts++ >= 6) {
+            setIsSwitchingToNewSession(false)
             log('new-session id poll timeout', { attempts })
             return
           }
           try {
-      const current = await getCurrentSession(projectDir, projectCliId)
-      log('new-session id poll tick', { attempts, id: current.id, source: current.source })
-      if (current.id) {
-        setCurrentSessionId(current.id)
-        log('new-session id updated', { id: current.id, source: current.source })
-        return
-      }
+            const current = await getCurrentSession(projectDir, projectCliId)
+            log('new-session id poll tick', { attempts, id: current.id, source: current.source, previousSessionId })
+            if (current.id && current.id !== previousSessionId) {
+              pendingPreviousSessionIdRef.current = null
+              setIsSwitchingToNewSession(false)
+              setCurrentSessionId(current.id)
+              log('new-session id updated', { id: current.id, source: current.source })
+              return
+            }
           } catch {
             log('new-session id poll error', { attempts })
           }
@@ -562,7 +592,9 @@ export default function ProjectPage() {
 
   if (!projectDir) return null
 
-  const currentSnapshot = snapshots.find((s) => s.id === currentSessionId) ?? null
+  const currentSnapshot = isSwitchingToNewSession
+    ? null
+    : (snapshots.find((s) => s.id === currentSessionId) ?? null)
 
   const handleRemove = async () => {
     if (!confirm(`从列表中移除项目 "${displayName}"？\n（不会删除本地文件）`)) return

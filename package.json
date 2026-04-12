@@ -1,9 +1,9 @@
 {
   "name": "cc-paw",
-  "version": "0.11.5",
+  "version": "0.12.0",
   "private": true,
   "license": "MIT",
-  "description": "Local UI for managing Claude Code configuration",
+  "description": "Local UI for managing Claude Code and Codex configuration",
   "main": "dist/electron/main.js",
   "scripts": {
     "dev": "electron-vite dev",

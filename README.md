@@ -5,9 +5,9 @@
 
   English | [中文](README.zh.md)
 
-  **A desktop GUI for managing your entire [Claude Code](https://claude.ai/code) workflow.**
+  **A desktop GUI for managing your [Claude Code](https://claude.ai/code) and Codex workflows.**
 
-  [![Version](https://img.shields.io/badge/version-0.11.5-blue.svg)](package.json)
+  [![Version](https://img.shields.io/badge/version-0.12.0-blue.svg)](package.json)
   [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
   [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgray.svg)](#platform-support)
   [![Electron](https://img.shields.io/badge/Electron-33-47848F.svg)](https://electronjs.org/)
@@ -17,9 +17,9 @@
 
 ---
 
-CC Paw is built for people who run Claude Code across many projects and want one clear, visual workspace instead of scattered terminals and config files. It gives each project a persistent session, real-time status, and timely notifications so you can focus on decisions instead of process.
+CC Paw is built for people who run Claude Code and Codex across many projects and want one clear, visual workspace instead of scattered terminals and config files. It gives each project a persistent session, real-time status, and timely notifications so you can focus on decisions instead of process.
 
-It also turns Claude Code setup into a visual workflow: system prompts (`CLAUDE.md`), skills, MCP servers, plugins, project docs, and usage analytics are all managed from the UI. Whether you are non-technical or highly technical, CC Paw makes project management and vibecoding with Claude Code faster, clearer, and easier to sustain.
+It also turns Claude Code and Codex setup into a visual workflow: system prompts (`CLAUDE.md`), skills, MCP servers, plugins, project docs, and usage analytics are all managed from the UI. Whether you are non-technical or highly technical, CC Paw makes project management and vibecoding faster, clearer, and easier to sustain.
 
 ## Get the app
 
@@ -30,7 +30,7 @@ It also turns Claude Code setup into a visual workflow: system prompts (`CLAUDE.
 sudo xattr -rd com.apple.quarantine "/Applications/CC Paw.app"
 ```
 
-- **Run from source:** clone the repo, run `npm install`, then `npm run dev` (see [Quick Start](#quick-start) for details). You need the **Claude Code** CLI and a populated `~/.claude/` directory to use the app meaningfully.
+- **Run from source:** clone the repo, run `npm install`, then `npm run dev` (see [Quick Start](#quick-start) for details). You need **Claude Code** and/or **Codex** CLI installed with populated `~/.claude/` and/or `~/.codex/` directories to use all features.
 - **Build an installer locally:** `npm run package` outputs platform-specific artifacts under `release/` (host OS only).
 
 ## Core features
@@ -39,11 +39,11 @@ sudo xattr -rd com.apple.quarantine "/Applications/CC Paw.app"
 
 Core project-facing workflows are centralized in one workspace (screenshot below):
 
-- **Multi-project sessions:** one persistent Claude terminal per project, so switching projects never drops context.
+- **Multi-project sessions:** one persistent CLI terminal per project (Claude Code or Codex), so switching projects never drops context.
 - **Session lifecycle:** start a new chat when needed and reopen archived conversations for follow-up work.
 - **Project organization:** rename projects, switch quickly in the sidebar, and track state with per-project status indicators.
 - **Project Docs (`docs/`):** edit Markdown with live preview and autosave, then keep project references in one place.
-- **Project settings:** edit shared Claude Code settings (`~/.claude/settings.json`) directly from the UI.
+- **Project settings:** edit shared CLI settings (`~/.claude/settings.json`, `~/.codex/config.toml`) directly from the UI.
 
 ![Project workspace: sessions, docs, and settings](resources/images/image_project.png)
 
@@ -63,7 +63,7 @@ Plugin workflows are grouped in one place (screenshot below):
 
 Usage and cost insights are shown in a dedicated dashboard (screenshot below):
 
-- Reads Claude Code JSONL logs from `~/.claude/projects/`
+- Reads Claude Code JSONL logs from `~/.claude/projects/` and Codex session logs from `~/.codex/sessions/`
 - Aggregated totals (input/output/cache) with estimated cost
 - Custom date-range filtering
 - Bar charts by hour, day, week, or month
@@ -101,7 +101,7 @@ Edit and validate `mcpServers` in `~/.claude.json` before saving.
 
 - **Node.js** 18+
 - **npm** 9+
-- **Claude Code** CLI installed (`~/.claude/` must exist)
+- **Claude Code** and/or **Codex** CLI installed (`~/.claude/` and/or `~/.codex/` should exist)
 
 **Windows only** — `node-pty` is a native C++ module and requires a compiler toolchain. Run the following in an **Administrator** PowerShell:
 
@@ -141,7 +141,7 @@ npm install
 npm run dev
 ```
 
-Once the app opens, click **+** in the sidebar to add a project directory, then click its name to open a Claude Code session.
+Once the app opens, click **+** in the sidebar to add a project directory, then click its name to open a CLI session.
 
 ## Building & Packaging
 
@@ -180,8 +180,8 @@ CC Paw is a standard Electron app with strict process separation. All file syste
 │                                                                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐              │
 │  │  File I/O    │  │  node-pty    │  │  shell runner │              │
-│  │  (~/.claude) │  │  (terminal)  │  │  (plugins,    │              │
-│  └──────────────┘  └──────────────┘  │   skills)     │              │
+│  │  (~/.claude, │  │  (terminal)  │  │  (plugins,    │              │
+│  │   ~/.codex)  │  └──────────────┘  │   skills)     │              │
 │                                      └───────────────┘              │
 └──────────────────────────────────────────────────────────────────────┘
 ```
